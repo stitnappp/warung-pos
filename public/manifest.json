@@ -1,7 +1,7 @@
 {
-  "name": "Warung Makan POS",
-  "short_name": "POS Warung",
-  "description": "Sistem Kasir Digital untuk Warung Makan",
+  "name": "RM MINANG MAIMBAOE POS",
+  "short_name": "POS Maimbaoe",
+  "description": "Sistem Kasir Digital untuk RM Minang Maimbaoe",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

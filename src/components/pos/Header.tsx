@@ -67,7 +67,7 @@ export function Header({ onOpenHistory, onOpenPrinterSettings, orderCount }: Hea
           <span className="text-2xl">🍽️</span>
         </div>
         <div>
-          <h1 className="text-xl font-bold text-foreground">Warung Makan</h1>
+          <h1 className="text-xl font-bold text-foreground">RM MINANG MAIMBAOE</h1>
           <p className="text-sm text-muted-foreground">Sistem Kasir Digital</p>
         </div>
       </div>
