@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.send-whatsapp-notification]
 verify_jwt = true
+
+[functions.send-daily-summary]
+verify_jwt = false
