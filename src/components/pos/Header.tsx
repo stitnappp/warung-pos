@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Receipt, Clock, LogOut, Settings, Users } from 'lucide-react';
+import { Receipt, Clock, LogOut, Settings, Printer } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,10 +13,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 interface HeaderProps {
   onOpenHistory: () => void;
+  onOpenPrinterSettings: () => void;
   orderCount: number;
 }
 
-export function Header({ onOpenHistory, orderCount }: HeaderProps) {
+export function Header({ onOpenHistory, onOpenPrinterSettings, orderCount }: HeaderProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const { fullName, role, signOut } = useAuth();
   const navigate = useNavigate();
@@ -79,6 +80,14 @@ export function Header({ onOpenHistory, orderCount }: HeaderProps) {
           </div>
           <span className="text-xs text-muted-foreground">{formatDate(currentTime)}</span>
         </div>
+
+        <button
+          onClick={onOpenPrinterSettings}
+          className="flex items-center gap-2 px-3 py-3 bg-secondary hover:bg-secondary/80 rounded-xl transition-all active:scale-95"
+          title="Pengaturan Printer"
+        >
+          <Printer className="w-5 h-5" />
+        </button>
 
         <button
           onClick={onOpenHistory}
