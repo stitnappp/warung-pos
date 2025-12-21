@@ -13,13 +13,19 @@ import { BluetoothPrinterSettings } from '@/components/pos/BluetoothPrinterSetti
 import { printReceipt as webPrintReceipt } from '@/utils/receiptPrinter';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { useEffect } from 'react';
 
 const Index = () => {
   const { categories, items, loading: menuLoading } = useMenuItems();
   const { tables } = useTables();
-  const { todayOrders, createOrder } = useOrders();
-  const { fullName } = useAuth();
+  const { todayOrders, createOrder, fetchTodayOrders } = useOrders();
+  const { fullName, role, user } = useAuth();
   const bluetoothPrinter = useBluetoothPrinter();
+
+  // Fetch orders filtered by role
+  useEffect(() => {
+    fetchTodayOrders(true, role);
+  }, [role, user?.id]);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);

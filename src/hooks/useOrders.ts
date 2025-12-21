@@ -23,11 +23,11 @@ export function useOrders() {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-  const fetchTodayOrders = async () => {
+  const fetchTodayOrders = async (filterByCashier: boolean = false, role?: string | null) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
       .select(`
         *,
@@ -35,6 +35,13 @@ export function useOrders() {
       `)
       .gte('created_at', today.toISOString())
       .order('created_at', { ascending: false });
+
+    // Filter by cashier_id if not admin
+    if (filterByCashier && role !== 'admin' && user?.id) {
+      query = query.eq('cashier_id', user.id);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     setTodayOrders(data || []);
