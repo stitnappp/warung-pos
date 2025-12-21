@@ -1,4 +1,4 @@
-import { CartItem } from '@/types/pos';
+import { CartItem } from '@/hooks/useOrders';
 import { Minus, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
