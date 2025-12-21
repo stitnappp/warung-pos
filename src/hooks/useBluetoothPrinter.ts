@@ -18,15 +18,6 @@ interface PrinterStatus {
 // Check if running on native platform
 const isNative = Capacitor.isNativePlatform();
 
-// Dynamic import for native-only plugin
-let CapacitorThermalPrinter: any = null;
-
-if (isNative) {
-  import('capacitor-thermal-printer').then((module) => {
-    CapacitorThermalPrinter = module.CapacitorThermalPrinter;
-  }).catch(console.error);
-}
-
 export function useBluetoothPrinter() {
   const [status, setStatus] = useState<PrinterStatus>({
     isConnected: false,
@@ -37,9 +28,25 @@ export function useBluetoothPrinter() {
     error: null,
   });
 
-  // Scan for Bluetooth devices
+  const [bluetoothLE, setBluetoothLE] = useState<any>(null);
+  const [thermalPrinter, setThermalPrinter] = useState<any>(null);
+
+  // Load plugins dynamically
+  useEffect(() => {
+    if (!isNative) return;
+
+    Promise.all([
+      import('@capacitor-community/bluetooth-le'),
+      import('capacitor-thermal-printer')
+    ]).then(([bleModule, printerModule]) => {
+      setBluetoothLE(bleModule.BleClient);
+      setThermalPrinter(printerModule.CapacitorThermalPrinter);
+    }).catch(console.error);
+  }, []);
+
+  // Scan for Bluetooth devices using BLE
   const scanDevices = useCallback(async () => {
-    if (!isNative || !CapacitorThermalPrinter) {
+    if (!isNative || !bluetoothLE) {
       setStatus(prev => ({ 
         ...prev, 
         error: 'Fitur ini hanya tersedia di aplikasi Android' 
@@ -48,35 +55,79 @@ export function useBluetoothPrinter() {
     }
 
     try {
-      setStatus(prev => ({ ...prev, isScanning: true, error: null }));
+      setStatus(prev => ({ ...prev, isScanning: true, error: null, devices: [] }));
       
-      const result = await CapacitorThermalPrinter.listPrinters();
-      const devices: BluetoothDevice[] = result.printers || [];
+      // Initialize BLE
+      await bluetoothLE.initialize();
       
-      setStatus(prev => ({ 
-        ...prev, 
-        devices, 
-        isScanning: false 
-      }));
+      // Check if Bluetooth is enabled
+      const isEnabled = await bluetoothLE.isEnabled();
+      if (!isEnabled) {
+        setStatus(prev => ({ 
+          ...prev, 
+          isScanning: false, 
+          error: 'Bluetooth tidak aktif. Silakan aktifkan Bluetooth terlebih dahulu.' 
+        }));
+        return;
+      }
+
+      const foundDevices: BluetoothDevice[] = [];
+      
+      // Request Bluetooth scan - this will show system dialog to select device
+      await bluetoothLE.requestLEScan(
+        { 
+          allowDuplicates: false,
+        },
+        (result: any) => {
+          if (result.device && result.device.deviceId) {
+            const device: BluetoothDevice = {
+              name: result.device.name || result.localName || 'Unknown Device',
+              address: result.device.deviceId,
+            };
+            
+            // Only add if not already in list
+            if (!foundDevices.some(d => d.address === device.address)) {
+              foundDevices.push(device);
+              setStatus(prev => ({ 
+                ...prev, 
+                devices: [...foundDevices]
+              }));
+            }
+          }
+        }
+      );
+
+      // Stop scanning after 10 seconds
+      setTimeout(async () => {
+        try {
+          await bluetoothLE.stopLEScan();
+        } catch (e) {
+          console.log('Scan already stopped');
+        }
+        setStatus(prev => ({ ...prev, isScanning: false }));
+      }, 10000);
+
     } catch (error: any) {
+      console.error('Scan error:', error);
       setStatus(prev => ({ 
         ...prev, 
         isScanning: false, 
-        error: error.message || 'Gagal mencari printer' 
+        error: error.message || 'Gagal mencari printer. Pastikan Bluetooth aktif dan izin diberikan.' 
       }));
     }
-  }, []);
+  }, [bluetoothLE]);
 
   // Connect to a specific printer
   const connectPrinter = useCallback(async (device: BluetoothDevice) => {
-    if (!isNative || !CapacitorThermalPrinter) {
+    if (!isNative || !thermalPrinter) {
       return false;
     }
 
     try {
       setStatus(prev => ({ ...prev, error: null }));
       
-      await CapacitorThermalPrinter.connect({ address: device.address });
+      // Connect using thermal printer plugin with device address
+      await thermalPrinter.connect({ address: device.address });
       
       setStatus(prev => ({ 
         ...prev, 
@@ -89,20 +140,21 @@ export function useBluetoothPrinter() {
       
       return true;
     } catch (error: any) {
+      console.error('Connect error:', error);
       setStatus(prev => ({ 
         ...prev, 
         error: error.message || 'Gagal koneksi ke printer' 
       }));
       return false;
     }
-  }, []);
+  }, [thermalPrinter]);
 
   // Disconnect from printer
   const disconnectPrinter = useCallback(async () => {
-    if (!isNative || !CapacitorThermalPrinter) return;
+    if (!isNative || !thermalPrinter) return;
 
     try {
-      await CapacitorThermalPrinter.disconnect();
+      await thermalPrinter.disconnect();
       setStatus(prev => ({ 
         ...prev, 
         isConnected: false, 
@@ -115,7 +167,7 @@ export function useBluetoothPrinter() {
         error: error.message || 'Gagal disconnect' 
       }));
     }
-  }, []);
+  }, [thermalPrinter]);
 
   // Print receipt
   const printReceipt = useCallback(async (receiptData: {
@@ -131,8 +183,7 @@ export function useBluetoothPrinter() {
     change: number;
     timestamp: Date;
   }) => {
-    if (!isNative || !CapacitorThermalPrinter) {
-      // Fall back to web print
+    if (!isNative || !thermalPrinter) {
       return false;
     }
 
@@ -159,7 +210,7 @@ export function useBluetoothPrinter() {
       };
 
       // Build receipt using the plugin's API
-      const printer = CapacitorThermalPrinter.begin();
+      const printer = thermalPrinter.begin();
       
       // Header
       await printer
@@ -227,11 +278,11 @@ export function useBluetoothPrinter() {
       }));
       return false;
     }
-  }, [status.isConnected]);
+  }, [status.isConnected, thermalPrinter]);
 
   // Try to reconnect to last printer on mount
   useEffect(() => {
-    if (!isNative) return;
+    if (!isNative || !thermalPrinter) return;
 
     const lastPrinter = localStorage.getItem('lastPrinter');
     if (lastPrinter) {
@@ -242,7 +293,7 @@ export function useBluetoothPrinter() {
         console.error('Failed to parse last printer:', e);
       }
     }
-  }, [connectPrinter]);
+  }, [connectPrinter, thermalPrinter]);
 
   return {
     ...status,
