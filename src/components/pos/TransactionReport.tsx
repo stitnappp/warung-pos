@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
+import { DailyReportReminder } from './DailyReportReminder';
 
 type Order = Tables<'orders'> & {
   order_items?: Tables<'order_items'>[];
@@ -295,6 +296,9 @@ export function TransactionReport() {
           Kosongkan nomor untuk memilih kontak saat WhatsApp terbuka. Format nomor: 08xxx atau 628xxx
         </p>
       </div>
+
+      {/* Daily Report Reminder */}
+      <DailyReportReminder onSendReport={generateReportText} />
 
       {/* Transaction List */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
