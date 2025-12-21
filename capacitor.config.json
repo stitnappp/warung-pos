@@ -1,6 +1,6 @@
 {
-  "appId": "com.warungmakan.pos",
-  "appName": "Warung Makan POS",
+  "appId": "com.minangmaimbaoe.pos",
+  "appName": "RM MINANG MAIMBAOE",
   "webDir": "dist",
   "android": {
     "allowMixedContent": true,
