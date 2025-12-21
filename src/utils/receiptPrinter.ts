@@ -1,4 +1,6 @@
 import { CartItem } from '@/hooks/useOrders';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 interface ReceiptData {
   orderNumber: string;
@@ -113,9 +115,25 @@ export function generateReceiptHTML(data: ReceiptData): string {
           margin-top: 15px;
           font-size: 10px;
         }
+        .print-btn {
+          display: block;
+          width: 100%;
+          padding: 15px;
+          margin-top: 20px;
+          background: #4CAF50;
+          color: white;
+          border: none;
+          font-size: 16px;
+          font-weight: bold;
+          cursor: pointer;
+          border-radius: 8px;
+        }
         @media print {
           body {
             width: 80mm;
+          }
+          .print-btn {
+            display: none;
           }
         }
       </style>
@@ -162,14 +180,40 @@ export function generateReceiptHTML(data: ReceiptData): string {
         <p>Selamat Menikmati!</p>
         <p>================================</p>
       </div>
+      
+      <button class="print-btn" onclick="window.print()">🖨️ Cetak Struk</button>
     </body>
     </html>
   `;
 }
 
-export function printReceipt(data: ReceiptData): void {
+export async function printReceipt(data: ReceiptData): Promise<void> {
   const receiptHTML = generateReceiptHTML(data);
   
+  // Create a data URL from the HTML
+  const base64HTML = btoa(unescape(encodeURIComponent(receiptHTML)));
+  const dataUrl = `data:text/html;base64,${base64HTML}`;
+  
+  // Check if running on native platform (Android/iOS)
+  if (Capacitor.isNativePlatform()) {
+    // Open in external browser (Chrome on Android)
+    try {
+      await Browser.open({ 
+        url: dataUrl,
+        presentationStyle: 'fullscreen'
+      });
+    } catch (error) {
+      console.error('Failed to open browser:', error);
+      // Fallback to in-app window
+      openPrintWindow(receiptHTML);
+    }
+  } else {
+    // Web fallback
+    openPrintWindow(receiptHTML);
+  }
+}
+
+function openPrintWindow(receiptHTML: string): void {
   const printWindow = window.open('', '_blank', 'width=300,height=600');
   if (printWindow) {
     printWindow.document.write(receiptHTML);

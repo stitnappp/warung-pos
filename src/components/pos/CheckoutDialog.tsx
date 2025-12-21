@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CartItem } from '@/hooks/useOrders';
 import { RestaurantTable } from '@/hooks/useTables';
-import { X, Banknote, CreditCard, QrCode, Printer, MapPin } from 'lucide-react';
+import { X, Banknote, CreditCard, QrCode, Printer, MapPin, ArrowLeft, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CheckoutDialogProps {
@@ -30,6 +30,12 @@ export function CheckoutDialog({
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'qris'>('cash');
   const [amountPaid, setAmountPaid] = useState<number>(total);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptData, setReceiptData] = useState<{
+    paymentMethod: 'cash' | 'transfer' | 'qris';
+    amountPaid: number;
+    change: number;
+  } | null>(null);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -45,17 +51,26 @@ export function CheckoutDialog({
     if (paymentMethod === 'cash' && amountPaid < total) return;
 
     setIsProcessing(true);
-    
-    // Langsung proses dan cetak tanpa menampilkan struk
     setTimeout(() => {
-      const finalAmountPaid = paymentMethod === 'cash' ? amountPaid : total;
-      onComplete(paymentMethod, finalAmountPaid);
-      
-      // Reset states
       setIsProcessing(false);
-      setAmountPaid(0);
-      setPaymentMethod('cash');
-    }, 500);
+      setReceiptData({
+        paymentMethod,
+        amountPaid: paymentMethod === 'cash' ? amountPaid : total,
+        change: paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0,
+      });
+      setShowReceipt(true);
+    }, 1000);
+  };
+
+  const handleBackToMenu = () => {
+    if (receiptData) {
+      onComplete(receiptData.paymentMethod, receiptData.amountPaid);
+    }
+    // Reset all states
+    setShowReceipt(false);
+    setReceiptData(null);
+    setAmountPaid(0);
+    setPaymentMethod('cash');
   };
 
   const handleQuickCash = (amount: number) => {
@@ -68,12 +83,106 @@ export function CheckoutDialog({
 
   // Reset states when dialog closes
   const handleClose = () => {
-    setAmountPaid(0);
-    setPaymentMethod('cash');
-    onClose();
+    if (!showReceipt) {
+      setAmountPaid(0);
+      setPaymentMethod('cash');
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
+
+  // Receipt View
+  if (showReceipt && receiptData) {
+    const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : null;
+    
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+        <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl border border-border shadow-2xl animate-scale-in">
+          {/* Header */}
+          <div className="flex items-center justify-center p-4 border-b border-border sticky top-0 bg-card z-10">
+            <h2 className="text-xl font-bold">Struk Pembayaran</h2>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Success Icon */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center">
+                <CheckCircle className="w-12 h-12 text-success" />
+              </div>
+              <h3 className="text-xl font-bold text-success">Pembayaran Berhasil!</h3>
+              <p className="text-sm text-muted-foreground text-center">
+                Struk telah dibuka di browser Chrome untuk dicetak
+              </p>
+            </div>
+
+            {/* Receipt Details */}
+            <div className="bg-secondary/50 rounded-xl p-4 space-y-3">
+              {/* Table */}
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Meja</span>
+                <span className="font-medium">{tableNum ? `#${tableNum}` : 'Bawa Pulang'}</span>
+              </div>
+
+              {/* Items */}
+              <div className="border-t border-border pt-3 space-y-2">
+                {items.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
+                    <span>
+                      {item.quantity}x {item.name}
+                    </span>
+                    <span className="font-medium">{formatPrice(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total */}
+              <div className="border-t border-border pt-3">
+                <div className="flex justify-between">
+                  <span className="font-semibold">Total</span>
+                  <span className="font-bold text-primary">{formatPrice(total)}</span>
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="border-t border-border pt-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Metode Pembayaran</span>
+                  <span className="font-medium capitalize">
+                    {receiptData.paymentMethod === 'cash' ? 'Tunai' : 
+                     receiptData.paymentMethod === 'transfer' ? 'Transfer' : 'QRIS'}
+                  </span>
+                </div>
+                {receiptData.paymentMethod === 'cash' && (
+                  <>
+                    <div className="flex justify-between text-sm mt-2">
+                      <span className="text-muted-foreground">Dibayar</span>
+                      <span className="font-medium">{formatPrice(receiptData.amountPaid)}</span>
+                    </div>
+                    {receiptData.change > 0 && (
+                      <div className="flex justify-between text-sm mt-2">
+                        <span className="text-muted-foreground">Kembalian</span>
+                        <span className="font-bold text-success">{formatPrice(receiptData.change)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Back to Menu Button */}
+            <button
+              onClick={handleBackToMenu}
+              className="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Kembali ke Menu
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
