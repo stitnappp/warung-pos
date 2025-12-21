@@ -120,6 +120,7 @@ export type Database = {
           created_at: string | null
           id: string
           notify_on_transaction: boolean | null
+          telegram_chat_id: string | null
           updated_at: string | null
           user_id: string
           whatsapp_number: string | null
@@ -128,6 +129,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           notify_on_transaction?: boolean | null
+          telegram_chat_id?: string | null
           updated_at?: string | null
           user_id: string
           whatsapp_number?: string | null
@@ -136,6 +138,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           notify_on_transaction?: boolean | null
+          telegram_chat_id?: string | null
           updated_at?: string | null
           user_id?: string
           whatsapp_number?: string | null

@@ -14,20 +14,32 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     if (req.method === 'POST') {
       const { orderNumber, total, cashierName, paymentMethod } = await req.json()
       
-      console.log('Sending WhatsApp notification for order:', orderNumber)
+      console.log('Sending Telegram notification for order:', orderNumber)
+
+      if (!telegramBotToken) {
+        console.error('TELEGRAM_BOT_TOKEN not configured')
+        return new Response(
+          JSON.stringify({ status: 'error', message: 'Telegram bot token not configured' }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        )
+      }
 
       // Get admin notification settings
       const { data: settings, error: settingsError } = await supabase
         .from('notification_settings')
-        .select('whatsapp_number, notify_on_transaction, user_id')
+        .select('telegram_chat_id, notify_on_transaction, user_id')
         .eq('notify_on_transaction', true)
-        .not('whatsapp_number', 'is', null)
+        .not('telegram_chat_id', 'is', null)
 
       if (settingsError) {
         console.error('Error fetching notification settings:', settingsError)
@@ -84,34 +96,58 @@ Deno.serve(async (req) => {
 💳 Pembayaran: ${paymentMethodLabel}
 ⏰ Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`
 
-      // Send WhatsApp notifications to all admins
+      // Send Telegram notifications to all admins
       const results = []
       for (const adminSetting of adminSettings) {
-        const phoneNumber = adminSetting.whatsapp_number.replace(/\D/g, '')
-        const formattedPhone = phoneNumber.startsWith('0') 
-          ? '62' + phoneNumber.slice(1) 
-          : phoneNumber.startsWith('62') 
-            ? phoneNumber 
-            : '62' + phoneNumber
+        const chatId = adminSetting.telegram_chat_id
 
-        // Using WhatsApp API URL (wa.me for deep linking)
-        // In production, you would use WhatsApp Business API
-        const waLink = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
-        
-        results.push({
-          phone: formattedPhone,
-          message: message,
-          waLink: waLink,
-          status: 'prepared'
-        })
+        try {
+          const telegramResponse = await fetch(
+            `https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: message,
+                parse_mode: 'Markdown',
+              }),
+            }
+          )
 
-        console.log(`WhatsApp notification prepared for: ${formattedPhone}`)
+          const telegramResult = await telegramResponse.json()
+          
+          if (telegramResult.ok) {
+            console.log(`Telegram notification sent to chat: ${chatId}`)
+            results.push({
+              chatId: chatId,
+              status: 'sent',
+            })
+          } else {
+            console.error(`Failed to send Telegram notification:`, telegramResult)
+            results.push({
+              chatId: chatId,
+              status: 'failed',
+              error: telegramResult.description,
+            })
+          }
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          console.error(`Error sending Telegram notification to ${chatId}:`, error)
+          results.push({
+            chatId: chatId,
+            status: 'error',
+            error: errorMessage,
+          })
+        }
       }
 
       return new Response(
         JSON.stringify({ 
           status: 'ok', 
-          message: 'Notifications prepared',
+          message: 'Notifications sent',
           notifications: results 
         }),
         { 
@@ -129,7 +165,7 @@ Deno.serve(async (req) => {
       }
     )
   } catch (error: unknown) {
-    console.error('WhatsApp notification error:', error)
+    console.error('Telegram notification error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(
       JSON.stringify({ error: errorMessage }),
