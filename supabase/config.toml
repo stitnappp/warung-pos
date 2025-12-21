@@ -2,3 +2,6 @@ project_id = "mgqvvvlkgpioikeebgln"
 
 [functions.midtrans-webhook]
 verify_jwt = false
+
+[functions.send-whatsapp-notification]
+verify_jwt = true

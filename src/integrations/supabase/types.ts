@@ -115,6 +115,33 @@ export type Database = {
           },
         ]
       }
+      notification_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          notify_on_transaction: boolean | null
+          updated_at: string | null
+          user_id: string
+          whatsapp_number: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notify_on_transaction?: boolean | null
+          updated_at?: string | null
+          user_id: string
+          whatsapp_number?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notify_on_transaction?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string

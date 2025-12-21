@@ -133,6 +133,24 @@ export function useOrders() {
         .eq('id', tableId);
     }
 
+    // Send WhatsApp notification to admin (fire and forget)
+    try {
+      supabase.functions.invoke('send-whatsapp-notification', {
+        body: {
+          orderNumber: order.order_number,
+          total: order.total,
+          cashierName: cashierName || 'Unknown',
+          paymentMethod: paymentMethod
+        }
+      }).then(response => {
+        console.log('WhatsApp notification response:', response);
+      }).catch(err => {
+        console.error('WhatsApp notification error:', err);
+      });
+    } catch (notifError) {
+      console.error('Failed to send WhatsApp notification:', notifError);
+    }
+
     await fetchTodayOrders();
     return order;
   };
