@@ -2,14 +2,10 @@
   "appId": "com.warungmakan.pos",
   "appName": "Warung Makan POS",
   "webDir": "dist",
-  "server": {
-    "url": "https://99abcf0b-b1e7-4a74-a767-302aa6016881.lovableproject.com?forceHideBadge=true",
-    "cleartext": true
-  },
   "android": {
     "allowMixedContent": true,
     "captureInput": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },
   "plugins": {
     "SplashScreen": {
