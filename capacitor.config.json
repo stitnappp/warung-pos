@@ -1,0 +1,26 @@
+{
+  "appId": "app.lovable.99abcf0bb1e74a74a767302aa6016881",
+  "appName": "Warung Makan POS",
+  "webDir": "dist",
+  "server": {
+    "url": "https://99abcf0b-b1e7-4a74-a767-302aa6016881.lovableproject.com?forceHideBadge=true",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0f1419",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0f1419"
+    }
+  }
+}
