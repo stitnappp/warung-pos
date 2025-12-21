@@ -12,7 +12,7 @@ import { formatPrice } from '@/utils/receiptPrinter';
 import { TransactionReport } from '@/components/pos/TransactionReport';
 import { ResetDataDialog } from '@/components/pos/ResetDataDialog';
 import { PaymentNotifications } from '@/components/pos/PaymentNotifications';
-import { WhatsAppNotificationSettings } from '@/components/pos/WhatsAppNotificationSettings';
+import { TelegramNotificationSettings } from '@/components/pos/TelegramNotificationSettings';
 
 type AdminTab = 'menu' | 'tables' | 'reports' | 'settings';
 
@@ -181,8 +181,8 @@ function ReportsView() {
 function SettingsView() {
   return (
     <div className="space-y-6">
-      {/* WhatsApp Notification Settings */}
-      <WhatsAppNotificationSettings />
+      {/* Telegram Notification Settings */}
+      <TelegramNotificationSettings />
 
       {/* Payment Notifications */}
       <PaymentNotifications />
