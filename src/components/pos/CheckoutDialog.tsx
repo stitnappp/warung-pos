@@ -219,6 +219,21 @@ export function CheckoutDialog({
                 Uang Pas
               </button>
 
+              {/* Custom Amount Input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Jumlah Uang Custom</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">Rp</span>
+                  <input
+                    type="number"
+                    value={amountPaid || ''}
+                    onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
+                    placeholder="Masukkan jumlah..."
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-right font-medium"
+                  />
+                </div>
+              </div>
+
               {/* Change */}
               {change > 0 && (
                 <div className="flex items-center justify-between p-4 bg-success/10 rounded-xl border border-success/20">
