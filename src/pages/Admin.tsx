@@ -6,12 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Trash2, Edit, Save, X, BarChart3, UtensilsCrossed, Users, Settings } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, Save, X, BarChart3, UtensilsCrossed, Users, Settings, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { TransactionReport } from '@/components/pos/TransactionReport';
+import { ResetDataDialog } from '@/components/pos/ResetDataDialog';
 
-type AdminTab = 'menu' | 'tables' | 'reports';
+type AdminTab = 'menu' | 'tables' | 'reports' | 'settings';
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -39,11 +40,12 @@ export default function Admin() {
       </header>
 
       {/* Tabs */}
-      <div className="flex gap-2 p-4 bg-card border-b border-border">
+      <div className="flex gap-2 p-4 bg-card border-b border-border overflow-x-auto">
         {[
           { id: 'menu' as AdminTab, label: 'Kelola Menu', icon: <UtensilsCrossed className="w-4 h-4" /> },
           { id: 'tables' as AdminTab, label: 'Kelola Meja', icon: <Users className="w-4 h-4" /> },
           { id: 'reports' as AdminTab, label: 'Laporan', icon: <BarChart3 className="w-4 h-4" /> },
+          { id: 'settings' as AdminTab, label: 'Pengaturan', icon: <Wrench className="w-4 h-4" /> },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -64,6 +66,7 @@ export default function Admin() {
         {activeTab === 'menu' && <MenuManager />}
         {activeTab === 'tables' && <TableManager />}
         {activeTab === 'reports' && <ReportsView />}
+        {activeTab === 'settings' && <SettingsView />}
       </div>
     </div>
   );
@@ -171,4 +174,32 @@ function TableManager() {
 
 function ReportsView() {
   return <TransactionReport />;
+}
+
+function SettingsView() {
+  return (
+    <div className="space-y-6">
+      {/* Reset Data Section */}
+      <div className="bg-card p-6 rounded-xl border border-border">
+        <h3 className="font-semibold mb-2 flex items-center gap-2">
+          <Trash2 className="w-5 h-5 text-destructive" />
+          Reset Data Transaksi
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Hapus data transaksi dari database. Tindakan ini tidak dapat dibatalkan.
+        </p>
+        <ResetDataDialog />
+      </div>
+
+      {/* Info Section */}
+      <div className="bg-secondary/50 p-6 rounded-xl border border-border">
+        <h3 className="font-semibold mb-2">Informasi Aplikasi</h3>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>• Data tersimpan di cloud dan aman</p>
+          <p>• Backup otomatis setiap hari</p>
+          <p>• Gunakan fitur laporan untuk export data sebelum reset</p>
+        </div>
+      </div>
+    </div>
+  );
 }
