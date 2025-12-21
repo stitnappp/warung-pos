@@ -82,7 +82,8 @@ const Index = () => {
 
   const handleCompleteOrder = async (paymentMethod: 'cash' | 'transfer' | 'qris', amountPaid: number) => {
     try {
-      const order = await createOrder(cart, selectedTable, paymentMethod, amountPaid);
+      const cashierName = fullName || 'Kasir';
+      const order = await createOrder(cart, selectedTable, paymentMethod, amountPaid, 0, undefined, cashierName);
 
       const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
 
