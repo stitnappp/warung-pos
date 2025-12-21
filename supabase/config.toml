@@ -8,3 +8,9 @@ verify_jwt = true
 
 [functions.send-daily-summary]
 verify_jwt = false
+
+[functions.create-qris-payment]
+verify_jwt = true
+
+[functions.check-payment-status]
+verify_jwt = true

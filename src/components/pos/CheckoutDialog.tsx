@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CartItem } from '@/hooks/useOrders';
 import { RestaurantTable } from '@/hooks/useTables';
-import { X, Banknote, CreditCard, QrCode, Printer, MapPin, ArrowLeft, CheckCircle } from 'lucide-react';
+import { X, Banknote, CreditCard, QrCode, Printer, MapPin, ArrowLeft, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 interface CheckoutDialogProps {
   isOpen: boolean;
@@ -37,6 +39,17 @@ export function CheckoutDialog({
     change: number;
   } | null>(null);
 
+  // QRIS states
+  const [qrisData, setQrisData] = useState<{
+    qrCodeUrl: string | null;
+    qrString: string | null;
+    orderId: string | null;
+    expiryTime: string | null;
+  } | null>(null);
+  const [showQrisPayment, setShowQrisPayment] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [qrisGenerating, setQrisGenerating] = useState(false);
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -47,7 +60,143 @@ export function CheckoutDialog({
 
   const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
 
+  // Generate unique order ID for QRIS
+  const generateOrderId = () => {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return `QRIS-${timestamp}-${random}`;
+  };
+
+  // Create QRIS payment
+  const handleCreateQrisPayment = async () => {
+    setQrisGenerating(true);
+    try {
+      const orderId = generateOrderId();
+      const itemDetails = items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+      }));
+
+      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
+        body: {
+          order_id: orderId,
+          amount: total,
+          item_details: itemDetails,
+        },
+      });
+
+      if (error) {
+        console.error('Error creating QRIS payment:', error);
+        toast({
+          title: 'Error',
+          description: 'Gagal membuat pembayaran QRIS. Silakan coba lagi.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (data.error) {
+        console.error('QRIS payment error:', data.error);
+        toast({
+          title: 'Error',
+          description: data.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setQrisData({
+        qrCodeUrl: data.qr_code_url,
+        qrString: data.qr_string,
+        orderId: data.order_id,
+        expiryTime: data.expiry_time,
+      });
+      setShowQrisPayment(true);
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: 'Error',
+        description: 'Terjadi kesalahan. Silakan coba lagi.',
+        variant: 'destructive',
+      });
+    } finally {
+      setQrisGenerating(false);
+    }
+  };
+
+  // Check payment status
+  const checkPaymentStatus = async () => {
+    if (!qrisData?.orderId) return;
+
+    setCheckingPayment(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-payment-status', {
+        body: { order_id: qrisData.orderId },
+      });
+
+      if (error) {
+        console.error('Error checking payment status:', error);
+        toast({
+          title: 'Error',
+          description: 'Gagal memeriksa status pembayaran.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (data.status === 'success') {
+        // Payment successful!
+        toast({
+          title: 'Pembayaran Berhasil!',
+          description: 'Pembayaran QRIS telah diterima.',
+        });
+        setReceiptData({
+          paymentMethod: 'qris',
+          amountPaid: total,
+          change: 0,
+        });
+        setShowQrisPayment(false);
+        setShowReceipt(true);
+      } else if (data.status === 'pending') {
+        toast({
+          title: 'Menunggu Pembayaran',
+          description: 'Pembayaran masih dalam proses. Silakan scan QR code.',
+        });
+      } else if (data.status === 'failed') {
+        toast({
+          title: 'Pembayaran Gagal',
+          description: 'Pembayaran QRIS gagal atau expired.',
+          variant: 'destructive',
+        });
+        setShowQrisPayment(false);
+        setQrisData(null);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
+  // Auto-check payment status every 5 seconds when QRIS is shown
+  useEffect(() => {
+    if (!showQrisPayment || !qrisData?.orderId) return;
+
+    const interval = setInterval(() => {
+      checkPaymentStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [showQrisPayment, qrisData?.orderId]);
+
   const handleComplete = () => {
+    if (paymentMethod === 'qris') {
+      handleCreateQrisPayment();
+      return;
+    }
+
     if (paymentMethod === 'cash' && amountPaid < total) return;
 
     setIsProcessing(true);
@@ -71,6 +220,13 @@ export function CheckoutDialog({
     setReceiptData(null);
     setAmountPaid(0);
     setPaymentMethod('cash');
+    setQrisData(null);
+    setShowQrisPayment(false);
+  };
+
+  const handleCancelQris = () => {
+    setShowQrisPayment(false);
+    setQrisData(null);
   };
 
   const handleQuickCash = (amount: number) => {
@@ -83,14 +239,95 @@ export function CheckoutDialog({
 
   // Reset states when dialog closes
   const handleClose = () => {
-    if (!showReceipt) {
+    if (!showReceipt && !showQrisPayment) {
       setAmountPaid(0);
       setPaymentMethod('cash');
+      setQrisData(null);
       onClose();
     }
   };
 
   if (!isOpen) return null;
+
+  // QRIS Payment View
+  if (showQrisPayment && qrisData) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+        <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl border border-border shadow-2xl animate-scale-in">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card z-10">
+            <h2 className="text-xl font-bold">Pembayaran QRIS</h2>
+            <button
+              onClick={handleCancelQris}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* QR Code */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="bg-white p-4 rounded-xl shadow-lg">
+                {qrisData.qrCodeUrl ? (
+                  <img 
+                    src={qrisData.qrCodeUrl} 
+                    alt="QRIS QR Code" 
+                    className="w-64 h-64 object-contain"
+                  />
+                ) : (
+                  <div className="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
+                    <span className="text-muted-foreground text-sm">QR Code tidak tersedia</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center space-y-2">
+                <p className="text-2xl font-bold text-primary">{formatPrice(total)}</p>
+                <p className="text-sm text-muted-foreground">
+                  Scan QR code di atas menggunakan aplikasi e-wallet
+                </p>
+                {qrisData.expiryTime && (
+                  <p className="text-xs text-muted-foreground">
+                    Berlaku sampai: {new Date(qrisData.expiryTime).toLocaleTimeString('id-ID')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Status Indicator */}
+            <div className="flex items-center justify-center gap-2 p-4 bg-secondary/50 rounded-xl">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="text-sm font-medium">Menunggu pembayaran...</span>
+            </div>
+
+            {/* Check Payment Button */}
+            <button
+              onClick={checkPaymentStatus}
+              disabled={checkingPayment}
+              className="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {checkingPayment ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-5 h-5" />
+              )}
+              Cek Status Pembayaran
+            </button>
+
+            {/* Cancel Button */}
+            <button
+              onClick={handleCancelQris}
+              className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 bg-muted text-muted-foreground hover:bg-muted/80 transition-all active:scale-95"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Kembali
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Receipt View
   if (showReceipt && receiptData) {
@@ -360,24 +597,43 @@ export function CheckoutDialog({
             </div>
           )}
 
+          {/* QRIS Info */}
+          {paymentMethod === 'qris' && (
+            <div className="p-4 bg-secondary/50 rounded-xl space-y-2">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-primary" />
+                <span className="font-medium">Pembayaran QRIS</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                QR code akan dibuat otomatis setelah Anda menekan tombol di bawah. Customer dapat scan menggunakan GoPay, OVO, DANA, ShopeePay, dan aplikasi e-wallet lainnya.
+              </p>
+            </div>
+          )}
+
           {/* Complete Button */}
           <button
             onClick={handleComplete}
             disabled={
               (paymentMethod === 'cash' && amountPaid < total) ||
-              isProcessing
+              isProcessing ||
+              qrisGenerating
             }
             className={cn(
               "w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95",
-              isProcessing
+              isProcessing || qrisGenerating
                 ? "bg-primary/70 text-primary-foreground"
                 : (paymentMethod !== 'cash' || amountPaid >= total)
                 ? "bg-primary text-primary-foreground hover:bg-primary/90"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
-            {isProcessing ? (
-              <div className="w-6 h-6 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+            {isProcessing || qrisGenerating ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : paymentMethod === 'qris' ? (
+              <>
+                <QrCode className="w-5 h-5" />
+                Buat QR Code
+              </>
             ) : (
               <>
                 <Printer className="w-5 h-5" />
