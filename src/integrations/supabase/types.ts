@@ -170,6 +170,7 @@ export type Database = {
         Row: {
           amount_paid: number | null
           cashier_id: string | null
+          cashier_name: string | null
           change_amount: number | null
           completed_at: string | null
           created_at: string
@@ -186,6 +187,7 @@ export type Database = {
         Insert: {
           amount_paid?: number | null
           cashier_id?: string | null
+          cashier_name?: string | null
           change_amount?: number | null
           completed_at?: string | null
           created_at?: string
@@ -202,6 +204,7 @@ export type Database = {
         Update: {
           amount_paid?: number | null
           cashier_id?: string | null
+          cashier_name?: string | null
           change_amount?: number | null
           completed_at?: string | null
           created_at?: string

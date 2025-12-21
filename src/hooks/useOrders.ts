@@ -69,7 +69,8 @@ export function useOrders() {
     paymentMethod: PaymentMethod,
     amountPaid: number,
     discount: number = 0,
-    notes?: string
+    notes?: string,
+    cashierName?: string
   ) => {
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const total = subtotal - discount;
@@ -85,6 +86,7 @@ export function useOrders() {
         order_number: orderNumber,
         table_id: tableId,
         cashier_id: user?.id,
+        cashier_name: cashierName,
         status: 'completed' as OrderStatus,
         subtotal,
         discount,

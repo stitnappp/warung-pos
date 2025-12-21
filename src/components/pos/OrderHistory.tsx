@@ -2,7 +2,6 @@ import { Order } from '@/hooks/useOrders';
 import { X, Receipt, Clock, Printer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { printReceipt, formatPrice } from '@/utils/receiptPrinter';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface OrderHistoryProps {
   isOpen: boolean;
@@ -11,7 +10,6 @@ interface OrderHistoryProps {
 }
 
 export function OrderHistory({ isOpen, onClose, orders }: OrderHistoryProps) {
-  const { fullName } = useAuth();
 
   const formatTime = (dateString: string) => {
     return new Intl.DateTimeFormat('id-ID', {
@@ -30,7 +28,7 @@ export function OrderHistory({ isOpen, onClose, orders }: OrderHistoryProps) {
 
     printReceipt({
       orderNumber: order.order_number,
-      cashierName: fullName || 'Kasir',
+      cashierName: (order as any).cashier_name || 'Kasir',
       items,
       subtotal: order.subtotal,
       discount: order.discount || 0,
