@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { TransactionReport } from '@/components/pos/TransactionReport';
 import { ResetDataDialog } from '@/components/pos/ResetDataDialog';
+import { PaymentNotifications } from '@/components/pos/PaymentNotifications';
 
 type AdminTab = 'menu' | 'tables' | 'reports' | 'settings';
 
@@ -179,6 +180,9 @@ function ReportsView() {
 function SettingsView() {
   return (
     <div className="space-y-6">
+      {/* Payment Notifications */}
+      <PaymentNotifications />
+
       {/* Reset Data Section */}
       <div className="bg-card p-6 rounded-xl border border-border">
         <h3 className="font-semibold mb-2 flex items-center gap-2">
@@ -189,6 +193,17 @@ function SettingsView() {
           Hapus data transaksi dari database. Tindakan ini tidak dapat dibatalkan.
         </p>
         <ResetDataDialog />
+      </div>
+
+      {/* Midtrans Webhook Info */}
+      <div className="bg-card p-6 rounded-xl border border-border">
+        <h3 className="font-semibold mb-2">Konfigurasi Midtrans</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Untuk menerima notifikasi pembayaran otomatis, tambahkan URL webhook berikut di dashboard Midtrans:
+        </p>
+        <code className="block bg-secondary p-3 rounded-lg text-sm break-all">
+          https://mgqvvvlkgpioikeebgln.supabase.co/functions/v1/midtrans-webhook
+        </code>
       </div>
 
       {/* Info Section */}

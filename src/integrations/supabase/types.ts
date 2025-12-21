@@ -225,6 +225,48 @@ export type Database = {
           },
         ]
       }
+      payment_notifications: {
+        Row: {
+          created_at: string
+          currency: string | null
+          gross_amount: number
+          id: string
+          is_read: boolean | null
+          order_id: string
+          payment_type: string
+          raw_payload: Json | null
+          transaction_id: string | null
+          transaction_status: string
+          transaction_time: string | null
+        }
+        Insert: {
+          created_at?: string
+          currency?: string | null
+          gross_amount: number
+          id?: string
+          is_read?: boolean | null
+          order_id: string
+          payment_type: string
+          raw_payload?: Json | null
+          transaction_id?: string | null
+          transaction_status: string
+          transaction_time?: string | null
+        }
+        Update: {
+          created_at?: string
+          currency?: string | null
+          gross_amount?: number
+          id?: string
+          is_read?: boolean | null
+          order_id?: string
+          payment_type?: string
+          raw_payload?: Json | null
+          transaction_id?: string | null
+          transaction_status?: string
+          transaction_time?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
