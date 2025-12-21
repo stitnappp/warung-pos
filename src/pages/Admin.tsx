@@ -6,15 +6,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Trash2, Edit, Save, X, BarChart3, UtensilsCrossed, Users, Settings, Wrench } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, Save, X, BarChart3, UtensilsCrossed, Users, Settings, Wrench, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { TransactionReport } from '@/components/pos/TransactionReport';
 import { ResetDataDialog } from '@/components/pos/ResetDataDialog';
 import { PaymentNotifications } from '@/components/pos/PaymentNotifications';
 import { TelegramNotificationSettings } from '@/components/pos/TelegramNotificationSettings';
+import { AccountingView } from '@/components/pos/AccountingView';
 
-type AdminTab = 'menu' | 'tables' | 'reports' | 'settings';
+type AdminTab = 'menu' | 'tables' | 'reports' | 'accounting' | 'settings';
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ export default function Admin() {
           { id: 'menu' as AdminTab, label: 'Kelola Menu', icon: <UtensilsCrossed className="w-4 h-4" /> },
           { id: 'tables' as AdminTab, label: 'Kelola Meja', icon: <Users className="w-4 h-4" /> },
           { id: 'reports' as AdminTab, label: 'Laporan', icon: <BarChart3 className="w-4 h-4" /> },
+          { id: 'accounting' as AdminTab, label: 'Accounting', icon: <Calculator className="w-4 h-4" /> },
           { id: 'settings' as AdminTab, label: 'Pengaturan', icon: <Wrench className="w-4 h-4" /> },
         ].map((tab) => (
           <button
@@ -68,6 +70,7 @@ export default function Admin() {
         {activeTab === 'menu' && <MenuManager />}
         {activeTab === 'tables' && <TableManager />}
         {activeTab === 'reports' && <ReportsView />}
+        {activeTab === 'accounting' && <AccountingView />}
         {activeTab === 'settings' && <SettingsView />}
       </div>
     </div>

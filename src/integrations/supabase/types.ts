@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounting_entries: {
+        Row: {
+          balance: number
+          created_at: string
+          credit: number
+          debit: number
+          description: string
+          entry_date: string
+          entry_type: string
+          id: string
+          payment_method: string | null
+          reference_id: string | null
+          reference_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          credit?: number
+          debit?: number
+          description: string
+          entry_date: string
+          entry_type: string
+          id?: string
+          payment_method?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          credit?: number
+          debit?: number
+          description?: string
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          payment_method?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       daily_reports: {
         Row: {
           cash_revenue: number | null
