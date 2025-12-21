@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMenuItems } from '@/hooks/useMenuItems';
 import { useTables } from '@/hooks/useTables';
-import { useOrders } from '@/hooks/useOrders';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +9,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, Plus, Trash2, Edit, Save, X, BarChart3, UtensilsCrossed, Users, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
+import { TransactionReport } from '@/components/pos/TransactionReport';
 
 type AdminTab = 'menu' | 'tables' | 'reports';
 
@@ -170,28 +170,5 @@ function TableManager() {
 }
 
 function ReportsView() {
-  const { getTodayStats, todayOrders } = useOrders();
-  const stats = getTodayStats();
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Transaksi', value: stats.totalOrders, color: 'text-foreground' },
-          { label: 'Total Pendapatan', value: formatPrice(stats.totalRevenue), color: 'text-primary' },
-          { label: 'Tunai', value: formatPrice(stats.cashRevenue), color: 'text-accent' },
-          { label: 'Transfer/QRIS', value: formatPrice(stats.transferRevenue + stats.qrisRevenue), color: 'text-purple-400' },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-card p-6 rounded-xl border border-border">
-            <div className="text-sm text-muted-foreground">{stat.label}</div>
-            <div className={cn("text-2xl font-bold mt-1", stat.color)}>{stat.value}</div>
-          </div>
-        ))}
-      </div>
-      <div className="bg-card rounded-xl border border-border p-4">
-        <h3 className="font-semibold mb-4">Transaksi Hari Ini</h3>
-        <div className="text-muted-foreground text-center py-8">{todayOrders.length === 0 ? 'Belum ada transaksi' : `${todayOrders.length} transaksi tercatat`}</div>
-      </div>
-    </div>
-  );
+  return <TransactionReport />;
 }
