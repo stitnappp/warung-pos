@@ -1,24 +1,39 @@
 import { useState, useMemo } from 'react';
-import { MenuCategory, CartItem, MenuItem, Order } from '@/types/pos';
-import { menuItems } from '@/data/menuItems';
+import { useMenuItems, MenuItem } from '@/hooks/useMenuItems';
+import { useTables } from '@/hooks/useTables';
+import { useOrders, CartItem } from '@/hooks/useOrders';
 import { Header } from '@/components/pos/Header';
 import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { MenuGrid } from '@/components/pos/MenuGrid';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog';
 import { OrderHistory } from '@/components/pos/OrderHistory';
+import { printReceipt } from '@/utils/receiptPrinter';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 const Index = () => {
-  const [activeCategory, setActiveCategory] = useState<MenuCategory>('makanan');
+  const { categories, items, loading: menuLoading } = useMenuItems();
+  const { tables } = useTables();
+  const { todayOrders, createOrder } = useOrders();
+  const { fullName } = useAuth();
+
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+
+  // Set default category when loaded
+  useMemo(() => {
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0].id);
+    }
+  }, [categories, activeCategory]);
 
   const filteredItems = useMemo(
-    () => menuItems.filter((item) => item.category === activeCategory),
-    [activeCategory]
+    () => items.filter((item) => item.category_id === activeCategory),
+    [items, activeCategory]
   );
 
   const cartTotal = useMemo(
@@ -34,22 +49,17 @@ const Index = () => {
           i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
     });
-    toast.success(`${item.name} ditambahkan`, {
-      duration: 1500,
-      position: 'bottom-center',
-    });
+    toast.success(`${item.name} ditambahkan`, { duration: 1500, position: 'bottom-center' });
   };
 
   const handleUpdateQuantity = (id: string, quantity: number) => {
     if (quantity <= 0) {
-      handleRemoveItem(id);
+      setCart((prev) => prev.filter((item) => item.id !== id));
       return;
     }
-    setCart((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
-    );
+    setCart((prev) => prev.map((item) => (item.id === id ? { ...item, quantity } : item)));
   };
 
   const handleRemoveItem = (id: string) => {
@@ -66,45 +76,51 @@ const Index = () => {
     setIsCheckoutOpen(true);
   };
 
-  const handleCompleteOrder = (paymentMethod: 'cash' | 'transfer', amountPaid: number) => {
-    const newOrder: Order = {
-      id: String(Date.now()).slice(-6),
-      items: [...cart],
-      total: cartTotal,
-      timestamp: new Date(),
-      paymentMethod,
-      amountPaid,
-      change: amountPaid - cartTotal,
-    };
+  const handleCompleteOrder = async (paymentMethod: 'cash' | 'transfer' | 'qris', amountPaid: number) => {
+    try {
+      const order = await createOrder(cart, selectedTable, paymentMethod, amountPaid);
 
-    setOrders((prev) => [newOrder, ...prev]);
-    setCart([]);
-    setIsCheckoutOpen(false);
-    
-    toast.success('Transaksi berhasil!', {
-      description: `Order #${newOrder.id} telah disimpan`,
-      position: 'bottom-center',
-      duration: 3000,
-    });
+      const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
+
+      printReceipt({
+        orderNumber: order.order_number,
+        cashierName: fullName || 'Kasir',
+        tableNumber: tableNum,
+        items: cart,
+        subtotal: cartTotal,
+        discount: 0,
+        total: cartTotal,
+        paymentMethod,
+        amountPaid,
+        change: paymentMethod === 'cash' ? amountPaid - cartTotal : 0,
+        timestamp: new Date(),
+      });
+
+      setCart([]);
+      setSelectedTable(null);
+      setIsCheckoutOpen(false);
+      toast.success('Transaksi berhasil!', { position: 'bottom-center' });
+    } catch (error) {
+      toast.error('Gagal menyimpan transaksi');
+    }
   };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Header onOpenHistory={() => setIsHistoryOpen(true)} orderCount={orders.length} />
+      <Header onOpenHistory={() => setIsHistoryOpen(true)} orderCount={todayOrders.length} />
 
       <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
-        {/* Menu Section */}
         <div className="flex-1 flex flex-col gap-4 min-h-0">
           <CategoryTabs
+            categories={categories}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
           />
           <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
-            <MenuGrid items={filteredItems} onAddItem={handleAddItem} />
+            <MenuGrid items={filteredItems} onAddItem={handleAddItem} loading={menuLoading} />
           </div>
         </div>
 
-        {/* Cart Section */}
         <div className="lg:w-96 h-[45vh] lg:h-auto">
           <CartPanel
             items={cart}
@@ -121,14 +137,13 @@ const Index = () => {
         onClose={() => setIsCheckoutOpen(false)}
         items={cart}
         total={cartTotal}
+        tables={tables}
+        selectedTable={selectedTable}
+        onSelectTable={setSelectedTable}
         onComplete={handleCompleteOrder}
       />
 
-      <OrderHistory
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        orders={orders}
-      />
+      <OrderHistory isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} orders={todayOrders} />
     </div>
   );
 };

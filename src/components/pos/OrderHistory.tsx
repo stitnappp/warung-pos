@@ -1,6 +1,8 @@
-import { Order } from '@/types/pos';
-import { X, Receipt, Clock } from 'lucide-react';
+import { Order } from '@/hooks/useOrders';
+import { X, Receipt, Clock, Printer } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { printReceipt, formatPrice } from '@/utils/receiptPrinter';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface OrderHistoryProps {
   isOpen: boolean;
@@ -9,24 +11,42 @@ interface OrderHistoryProps {
 }
 
 export function OrderHistory({ isOpen, onClose, orders }: OrderHistoryProps) {
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(price);
-  };
+  const { fullName } = useAuth();
 
-  const formatTime = (date: Date) => {
+  const formatTime = (dateString: string) => {
     return new Intl.DateTimeFormat('id-ID', {
       hour: '2-digit',
       minute: '2-digit',
-    }).format(date);
+    }).format(new Date(dateString));
+  };
+
+  const handlePrint = (order: Order) => {
+    const items = order.order_items?.map(item => ({
+      id: item.menu_item_id || item.id,
+      name: item.menu_item_name,
+      price: item.unit_price,
+      quantity: item.quantity,
+    })) || [];
+
+    printReceipt({
+      orderNumber: order.order_number,
+      cashierName: fullName || 'Kasir',
+      items,
+      subtotal: order.subtotal,
+      discount: order.discount || 0,
+      total: order.total,
+      paymentMethod: order.payment_method || 'cash',
+      amountPaid: order.amount_paid || order.total,
+      change: order.change_amount || 0,
+      timestamp: new Date(order.created_at),
+    });
   };
 
   if (!isOpen) return null;
 
-  const todayTotal = orders.reduce((sum, order) => sum + order.total, 0);
+  const todayTotal = orders
+    .filter(o => o.status === 'completed')
+    .reduce((sum, order) => sum + order.total, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
@@ -51,7 +71,9 @@ export function OrderHistory({ isOpen, onClose, orders }: OrderHistoryProps) {
             <span className="text-muted-foreground">Total Hari Ini</span>
             <span className="text-2xl font-bold text-primary">{formatPrice(todayTotal)}</span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{orders.length} transaksi</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {orders.filter(o => o.status === 'completed').length} transaksi
+          </p>
         </div>
 
         {/* Orders List */}
@@ -72,27 +94,48 @@ export function OrderHistory({ isOpen, onClose, orders }: OrderHistoryProps) {
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-muted-foreground">#{order.id}</span>
-                    <span className={cn(
-                      "px-2 py-0.5 rounded text-xs font-medium",
-                      order.paymentMethod === 'cash' 
-                        ? "bg-accent/20 text-accent" 
-                        : "bg-primary/20 text-primary"
-                    )}>
-                      {order.paymentMethod === 'cash' ? 'Tunai' : 'Transfer'}
+                    <span className="text-xs font-mono text-muted-foreground">
+                      #{order.order_number}
+                    </span>
+                    <span
+                      className={cn(
+                        "px-2 py-0.5 rounded text-xs font-medium",
+                        order.payment_method === 'cash'
+                          ? "bg-accent/20 text-accent"
+                          : order.payment_method === 'qris'
+                          ? "bg-purple-500/20 text-purple-400"
+                          : "bg-primary/20 text-primary"
+                      )}
+                    >
+                      {order.payment_method === 'cash'
+                        ? 'Tunai'
+                        : order.payment_method === 'qris'
+                        ? 'QRIS'
+                        : 'Transfer'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-muted-foreground text-sm">
-                    <Clock className="w-4 h-4" />
-                    {formatTime(order.timestamp)}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-muted-foreground text-sm">
+                      <Clock className="w-4 h-4" />
+                      {formatTime(order.created_at)}
+                    </div>
+                    <button
+                      onClick={() => handlePrint(order)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+                      title="Cetak ulang struk"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
                 <div className="space-y-1 mb-3">
-                  {order.items.map((item) => (
+                  {order.order_items?.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{item.quantity}x {item.name}</span>
-                      <span>{formatPrice(item.price * item.quantity)}</span>
+                      <span className="text-muted-foreground">
+                        {item.quantity}x {item.menu_item_name}
+                      </span>
+                      <span>{formatPrice(item.total_price)}</span>
                     </div>
                   ))}
                 </div>

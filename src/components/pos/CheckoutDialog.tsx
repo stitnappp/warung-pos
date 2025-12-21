@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { CartItem } from '@/types/pos';
-import { X, Banknote, CreditCard, Printer, Check } from 'lucide-react';
+import { CartItem } from '@/hooks/useOrders';
+import { RestaurantTable } from '@/hooks/useTables';
+import { X, Banknote, CreditCard, QrCode, Printer, Check, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CheckoutDialogProps {
@@ -8,13 +9,25 @@ interface CheckoutDialogProps {
   onClose: () => void;
   items: CartItem[];
   total: number;
-  onComplete: (paymentMethod: 'cash' | 'transfer', amountPaid: number) => void;
+  tables: RestaurantTable[];
+  selectedTable: string | null;
+  onSelectTable: (tableId: string | null) => void;
+  onComplete: (paymentMethod: 'cash' | 'transfer' | 'qris', amountPaid: number) => void;
 }
 
 const quickCashOptions = [20000, 50000, 100000, 200000];
 
-export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: CheckoutDialogProps) {
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
+export function CheckoutDialog({
+  isOpen,
+  onClose,
+  items,
+  total,
+  tables,
+  selectedTable,
+  onSelectTable,
+  onComplete,
+}: CheckoutDialogProps) {
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'qris'>('cash');
   const [amountPaid, setAmountPaid] = useState<number>(total);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -27,19 +40,20 @@ export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: Ch
     }).format(price);
   };
 
-  const change = amountPaid - total;
+  const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
 
   const handleComplete = () => {
-    if (amountPaid < total) return;
-    
+    if (paymentMethod === 'cash' && amountPaid < total) return;
+
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
       setIsComplete(true);
       setTimeout(() => {
-        onComplete(paymentMethod, amountPaid);
+        onComplete(paymentMethod, paymentMethod === 'cash' ? amountPaid : total);
         setIsComplete(false);
         setAmountPaid(0);
+        setPaymentMethod('cash');
       }, 1500);
     }, 1000);
   };
@@ -56,9 +70,9 @@ export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: Ch
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl animate-scale-in overflow-hidden">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl border border-border shadow-2xl animate-scale-in">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card z-10">
           <h2 className="text-xl font-bold">Pembayaran</h2>
           <button
             onClick={onClose}
@@ -69,11 +83,51 @@ export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: Ch
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Table Selection */}
+          <div>
+            <label className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-2">
+              <MapPin className="w-4 h-4" />
+              Pilih Meja (Opsional)
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              <button
+                onClick={() => onSelectTable(null)}
+                className={cn(
+                  "py-3 rounded-lg text-sm font-medium transition-all active:scale-95",
+                  selectedTable === null
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80"
+                )}
+              >
+                Bawa
+              </button>
+              {tables
+                .filter(t => t.status === 'available' || t.id === selectedTable)
+                .slice(0, 7)
+                .map((table) => (
+                  <button
+                    key={table.id}
+                    onClick={() => onSelectTable(table.id)}
+                    className={cn(
+                      "py-3 rounded-lg text-sm font-medium transition-all active:scale-95",
+                      selectedTable === table.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted hover:bg-muted/80"
+                    )}
+                  >
+                    #{table.table_number}
+                  </button>
+                ))}
+            </div>
+          </div>
+
           {/* Order Summary */}
           <div className="bg-secondary/50 rounded-xl p-4 space-y-2 max-h-40 overflow-y-auto no-scrollbar">
             {items.map((item) => (
               <div key={item.id} className="flex justify-between text-sm">
-                <span>{item.quantity}x {item.name}</span>
+                <span>
+                  {item.quantity}x {item.name}
+                </span>
                 <span className="font-medium">{formatPrice(item.price * item.quantity)}</span>
               </div>
             ))}
@@ -86,30 +140,51 @@ export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: Ch
           </div>
 
           {/* Payment Method */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => setPaymentMethod('cash')}
+              onClick={() => {
+                setPaymentMethod('cash');
+                setAmountPaid(total);
+              }}
               className={cn(
-                "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all active:scale-95",
+                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
                 paymentMethod === 'cash'
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
               )}
             >
               <Banknote className="w-5 h-5" />
-              Tunai
+              <span className="text-sm">Tunai</span>
             </button>
             <button
-              onClick={() => setPaymentMethod('transfer')}
+              onClick={() => {
+                setPaymentMethod('transfer');
+                setAmountPaid(total);
+              }}
               className={cn(
-                "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all active:scale-95",
+                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
                 paymentMethod === 'transfer'
                   ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground"
               )}
             >
               <CreditCard className="w-5 h-5" />
-              Transfer
+              <span className="text-sm">Transfer</span>
+            </button>
+            <button
+              onClick={() => {
+                setPaymentMethod('qris');
+                setAmountPaid(total);
+              }}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
+                paymentMethod === 'qris'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              )}
+            >
+              <QrCode className="w-5 h-5" />
+              <span className="text-sm">QRIS</span>
             </button>
           </div>
 
@@ -157,12 +232,16 @@ export function CheckoutDialog({ isOpen, onClose, items, total, onComplete }: Ch
           {/* Complete Button */}
           <button
             onClick={handleComplete}
-            disabled={amountPaid < total || isProcessing || isComplete}
+            disabled={
+              (paymentMethod === 'cash' && amountPaid < total) ||
+              isProcessing ||
+              isComplete
+            }
             className={cn(
               "w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95",
               isComplete
                 ? "bg-success text-success-foreground"
-                : amountPaid >= total
+                : (paymentMethod !== 'cash' || amountPaid >= total)
                 ? "bg-primary text-primary-foreground hover:bg-primary/90"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
