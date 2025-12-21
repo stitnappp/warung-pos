@@ -130,7 +130,7 @@ _Laporan otomatis dari sistem POS_`;
     }
 
     // Save daily report to database
-    const { error: reportError } = await supabase
+    const { data: reportData, error: reportError } = await supabase
       .from('daily_reports')
       .upsert({
         report_date: today.toISOString().split('T')[0],
@@ -141,10 +141,103 @@ _Laporan otomatis dari sistem POS_`;
         qris_revenue: qrisRevenue,
       }, {
         onConflict: 'report_date'
-      });
+      })
+      .select()
+      .single();
 
     if (reportError) {
       console.error('Error saving daily report:', reportError);
+    }
+
+    // Create accounting entries for daily settlement
+    if (reportData && totalRevenue > 0) {
+      const reportDate = today.toISOString().split('T')[0];
+      
+      // Get previous balance
+      const { data: lastEntry } = await supabase
+        .from('accounting_entries')
+        .select('balance')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      const previousBalance = lastEntry?.balance || 0;
+      const newBalance = previousBalance + totalRevenue;
+      
+      // Create accounting entries for each payment method
+      const accountingEntries = [];
+      
+      if (cashRevenue > 0) {
+        accountingEntries.push({
+          entry_date: reportDate,
+          entry_type: 'income',
+          description: `Pendapatan Tunai - ${dateStr}`,
+          debit: cashRevenue,
+          credit: 0,
+          balance: 0, // Will update after
+          reference_id: reportData.id,
+          reference_type: 'daily_report',
+          payment_method: 'cash',
+        });
+      }
+      
+      if (transferRevenue > 0) {
+        accountingEntries.push({
+          entry_date: reportDate,
+          entry_type: 'income',
+          description: `Pendapatan Transfer - ${dateStr}`,
+          debit: transferRevenue,
+          credit: 0,
+          balance: 0,
+          reference_id: reportData.id,
+          reference_type: 'daily_report',
+          payment_method: 'transfer',
+        });
+      }
+      
+      if (qrisRevenue > 0) {
+        accountingEntries.push({
+          entry_date: reportDate,
+          entry_type: 'income',
+          description: `Pendapatan QRIS - ${dateStr}`,
+          debit: qrisRevenue,
+          credit: 0,
+          balance: 0,
+          reference_id: reportData.id,
+          reference_type: 'daily_report',
+          payment_method: 'qris',
+        });
+      }
+      
+      // Add summary entry
+      accountingEntries.push({
+        entry_date: reportDate,
+        entry_type: 'daily_summary',
+        description: `Total Settlement - ${dateStr} (${totalOrders} pesanan)`,
+        debit: totalRevenue,
+        credit: 0,
+        balance: newBalance,
+        reference_id: reportData.id,
+        reference_type: 'daily_report',
+        payment_method: null,
+      });
+
+      // Delete existing entries for today to avoid duplicates
+      await supabase
+        .from('accounting_entries')
+        .delete()
+        .eq('entry_date', reportDate);
+
+      // Insert new accounting entries
+      const { error: accountingError } = await supabase
+        .from('accounting_entries')
+        .insert(accountingEntries);
+
+      if (accountingError) {
+        console.error('Error creating accounting entries:', accountingError);
+      } else {
+        console.log('Accounting entries created successfully');
+      }
     }
 
     return new Response(JSON.stringify({ 
