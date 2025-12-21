@@ -2,13 +2,15 @@ import { useState, useMemo } from 'react';
 import { useMenuItems, MenuItem } from '@/hooks/useMenuItems';
 import { useTables } from '@/hooks/useTables';
 import { useOrders, CartItem } from '@/hooks/useOrders';
+import { useBluetoothPrinter } from '@/hooks/useBluetoothPrinter';
 import { Header } from '@/components/pos/Header';
 import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { MenuGrid } from '@/components/pos/MenuGrid';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { CheckoutDialog } from '@/components/pos/CheckoutDialog';
 import { OrderHistory } from '@/components/pos/OrderHistory';
-import { printReceipt } from '@/utils/receiptPrinter';
+import { BluetoothPrinterSettings } from '@/components/pos/BluetoothPrinterSettings';
+import { printReceipt as webPrintReceipt } from '@/utils/receiptPrinter';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -17,11 +19,13 @@ const Index = () => {
   const { tables } = useTables();
   const { todayOrders, createOrder } = useOrders();
   const { fullName } = useAuth();
+  const bluetoothPrinter = useBluetoothPrinter();
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
   // Set default category when loaded
@@ -82,7 +86,7 @@ const Index = () => {
 
       const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
 
-      printReceipt({
+      const receiptData = {
         orderNumber: order.order_number,
         cashierName: fullName || 'Kasir',
         tableNumber: tableNum,
@@ -94,7 +98,18 @@ const Index = () => {
         amountPaid,
         change: paymentMethod === 'cash' ? amountPaid - cartTotal : 0,
         timestamp: new Date(),
-      });
+      };
+
+      // Try Bluetooth print first, fallback to web print
+      if (bluetoothPrinter.isNative && bluetoothPrinter.isConnected) {
+        const btSuccess = await bluetoothPrinter.printReceipt(receiptData);
+        if (!btSuccess) {
+          // Fallback to web print if Bluetooth fails
+          webPrintReceipt(receiptData);
+        }
+      } else {
+        webPrintReceipt(receiptData);
+      }
 
       setCart([]);
       setSelectedTable(null);
@@ -107,7 +122,11 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <Header onOpenHistory={() => setIsHistoryOpen(true)} orderCount={todayOrders.length} />
+      <Header 
+        onOpenHistory={() => setIsHistoryOpen(true)} 
+        onOpenPrinterSettings={() => setIsPrinterSettingsOpen(true)}
+        orderCount={todayOrders.length} 
+      />
 
       <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
         <div className="flex-1 flex flex-col gap-4 min-h-0">
@@ -144,6 +163,11 @@ const Index = () => {
       />
 
       <OrderHistory isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} orders={todayOrders} />
+      
+      <BluetoothPrinterSettings 
+        isOpen={isPrinterSettingsOpen} 
+        onClose={() => setIsPrinterSettingsOpen(false)} 
+      />
     </div>
   );
 };
