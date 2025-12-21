@@ -4,7 +4,7 @@ import { id as idLocale } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Calendar, MessageCircle, FileText, TrendingUp, CreditCard, Banknote, QrCode, Download } from 'lucide-react';
+import { Calendar, Send, FileText, TrendingUp, CreditCard, Banknote, QrCode, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { toast } from 'sonner';
@@ -34,7 +34,7 @@ export function TransactionReport() {
   const [customEndDate, setCustomEndDate] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [sendingTelegram, setSendingTelegram] = useState(false);
   
   const isAdmin = role === 'admin';
 
@@ -154,27 +154,26 @@ export function TransactionReport() {
     return text;
   };
 
-  const shareToWhatsApp = () => {
-    const reportText = generateReportText();
-    const encodedText = encodeURIComponent(reportText);
-    
-    let whatsappUrl: string;
-    if (whatsappNumber) {
-      // Clean the phone number
-      const cleanNumber = whatsappNumber.replace(/\D/g, '');
-      const formattedNumber = cleanNumber.startsWith('0') 
-        ? '62' + cleanNumber.slice(1) 
-        : cleanNumber.startsWith('62') 
-          ? cleanNumber 
-          : '62' + cleanNumber;
-      whatsappUrl = `https://wa.me/${formattedNumber}?text=${encodedText}`;
-    } else {
-      // Open WhatsApp without specific number
-      whatsappUrl = `https://wa.me/?text=${encodedText}`;
+  const sendToTelegram = async () => {
+    setSendingTelegram(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-daily-summary');
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        toast.success('Laporan berhasil dikirim ke Telegram');
+      } else if (data?.message === 'No notifications configured') {
+        toast.error('Telegram belum dikonfigurasi. Silakan atur di menu Pengaturan.');
+      } else {
+        toast.success('Laporan dikirim');
+      }
+    } catch (error) {
+      console.error('Error sending to Telegram:', error);
+      toast.error('Gagal mengirim laporan ke Telegram');
+    } finally {
+      setSendingTelegram(false);
     }
-    
-    window.open(whatsappUrl, '_blank');
-    toast.success('Membuka WhatsApp...');
   };
 
   const copyToClipboard = () => {
@@ -281,22 +280,24 @@ export function TransactionReport() {
         </div>
       </div>
 
-      {/* WhatsApp Share */}
+      {/* Telegram Share */}
       <div className="bg-card p-4 rounded-xl border border-border space-y-4">
         <h3 className="font-semibold flex items-center gap-2">
-          <MessageCircle className="w-5 h-5 text-green-500" />
-          Kirim Laporan via WhatsApp
+          <Send className="w-5 h-5 text-primary" />
+          Kirim Laporan via Telegram Bot
         </h3>
         <div className="flex gap-3 flex-wrap">
-          <Input
-            placeholder="Nomor WhatsApp (opsional, contoh: 08123456789)"
-            value={whatsappNumber}
-            onChange={(e) => setWhatsappNumber(e.target.value)}
-            className="flex-1 min-w-[250px]"
-          />
-          <Button onClick={shareToWhatsApp} className="bg-green-600 hover:bg-green-700">
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Kirim ke WhatsApp
+          <Button 
+            onClick={sendToTelegram} 
+            disabled={sendingTelegram}
+            className="bg-[#0088cc] hover:bg-[#0077b5]"
+          >
+            {sendingTelegram ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4 mr-2" />
+            )}
+            Kirim ke Telegram
           </Button>
           <Button variant="outline" onClick={copyToClipboard}>
             <Download className="w-4 h-4 mr-2" />
@@ -304,7 +305,7 @@ export function TransactionReport() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Kosongkan nomor untuk memilih kontak saat WhatsApp terbuka. Format nomor: 08xxx atau 628xxx
+          Pastikan Telegram Bot sudah dikonfigurasi di menu Pengaturan → Notifikasi Telegram
         </p>
       </div>
 
