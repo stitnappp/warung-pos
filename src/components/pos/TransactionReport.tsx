@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { formatPrice } from '@/utils/receiptPrinter';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
+import { useAuth } from '@/contexts/AuthContext';
 import { DailyReportReminder } from './DailyReportReminder';
 
 type Order = Tables<'orders'> & {
@@ -27,12 +28,15 @@ interface ReportStats {
 }
 
 export function TransactionReport() {
+  const { user, role } = useAuth();
   const [period, setPeriod] = useState<ReportPeriod>('today');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  
+  const isAdmin = role === 'admin';
 
   const getDateRange = () => {
     const now = new Date();
@@ -55,13 +59,20 @@ export function TransactionReport() {
     setLoading(true);
     try {
       const { start, end } = getDateRange();
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`*, order_items (*)`)
         .gte('created_at', start.toISOString())
         .lte('created_at', end.toISOString())
         .eq('status', 'completed')
         .order('created_at', { ascending: false });
+
+      // Filter by cashier_id if not admin
+      if (!isAdmin && user?.id) {
+        query = query.eq('cashier_id', user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setOrders(data || []);
@@ -75,7 +86,7 @@ export function TransactionReport() {
 
   useEffect(() => {
     fetchOrders();
-  }, [period, customStartDate, customEndDate]);
+  }, [period, customStartDate, customEndDate, isAdmin, user?.id]);
 
   const calculateStats = (): ReportStats => {
     const completedOrders = orders.filter(o => o.status === 'completed');
