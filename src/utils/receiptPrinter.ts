@@ -122,9 +122,11 @@ export function generateReceiptHTML(data: ReceiptData): string {
     </head>
     <body>
       <div class="header">
-        <h1>🍽️ WARUNG MAKAN</h1>
+        <h1>🍽️ RM.MINANG MAIMBAOE</h1>
         <p>Sistem Kasir Digital</p>
-        <p>Jl. Contoh No. 123</p>
+        <p>Jln. Gatot Subroto no.10</p>
+        <p>Depan Balai Desa Losari Kidul</p>
+        <p>Kec. Losari, Kab. Cirebon, 45192</p>
       </div>
       
       <div class="info">
