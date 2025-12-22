@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
 
     const requestTarget = `/orders/v1/status/${order_id}`
     const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const requestTimestamp = new Date().toISOString()
+    const requestTimestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
     const signature = await generateGetSignature(
       clientId,
@@ -119,9 +119,11 @@ Deno.serve(async (req) => {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Client-Id': clientId,
         'Request-Id': requestId,
         'Request-Timestamp': requestTimestamp,
+        'Request-Target': requestTarget,
         'Signature': `HMACSHA256=${signature}`
       }
     })

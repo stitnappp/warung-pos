@@ -13,16 +13,16 @@ async function generateSignature(
   requestTimestamp: string,
   requestTarget: string,
   body: string
-): Promise<string> {
-  // Create digest from body
+): Promise<{ signature: string; digest: string }> {
+  // Digest = base64(sha256(body))
   const bodyBytes = new TextEncoder().encode(body);
   const hashBuffer = await crypto.subtle.digest("SHA-256", bodyBytes);
   const digest = base64Encode(hashBuffer);
 
-  // Create component signature
+  // Prepare signature component
   const componentSignature = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
 
-  // Create HMAC-SHA256 signature
+  // HMAC-SHA256(componentSignature)
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secretKey),
@@ -37,7 +37,7 @@ async function generateSignature(
     new TextEncoder().encode(componentSignature)
   );
 
-  return base64Encode(signatureBuffer);
+  return { signature: base64Encode(signatureBuffer), digest };
 }
 
 // Generate unique request ID
@@ -71,7 +71,8 @@ Deno.serve(async (req) => {
 
     const requestTarget = '/checkout/v1/payment'
     const requestId = generateRequestId()
-    const requestTimestamp = new Date().toISOString()
+    // DOKU examples use timestamps without milliseconds
+    const requestTimestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
     // Create payment request body
     const requestBody = {
@@ -98,8 +99,8 @@ Deno.serve(async (req) => {
 
     const bodyString = JSON.stringify(requestBody)
 
-    // Generate signature
-    const signature = await generateSignature(
+    // Generate signature + digest (required headers)
+    const { signature, digest } = await generateSignature(
       clientId,
       secretKey,
       requestId,
@@ -120,9 +121,12 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Client-Id': clientId,
         'Request-Id': requestId,
         'Request-Timestamp': requestTimestamp,
+        'Request-Target': requestTarget,
+        'Digest': digest,
         'Signature': `HMACSHA256=${signature}`
       },
       body: bodyString
