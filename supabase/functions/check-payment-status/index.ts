@@ -46,8 +46,8 @@ Deno.serve(async (req) => {
 
     console.log('Checking DOKU payment status for order:', order_id)
 
-    const clientId = Deno.env.get('DOKU_CLIENT_ID')
-    const secretKey = Deno.env.get('DOKU_SECRET_KEY')
+    const clientId = Deno.env.get('DOKU_CLIENT_ID')?.trim()
+    const secretKey = Deno.env.get('DOKU_SECRET_KEY')?.trim()
 
     if (!clientId || !secretKey) {
       // Fallback: Check from payment_notifications table
