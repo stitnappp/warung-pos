@@ -1,8 +1,48 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Generate DOKU signature
+async function generateSignature(
+  clientId: string,
+  secretKey: string,
+  requestId: string,
+  requestTimestamp: string,
+  requestTarget: string,
+  body: string
+): Promise<string> {
+  // Create digest from body
+  const bodyBytes = new TextEncoder().encode(body);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", bodyBytes);
+  const digest = base64Encode(hashBuffer);
+
+  // Create component signature
+  const componentSignature = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
+
+  // Create HMAC-SHA256 signature
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secretKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signatureBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(componentSignature)
+  );
+
+  return base64Encode(signatureBuffer);
+}
+
+// Generate unique request ID
+function generateRequestId(): string {
+  return `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 Deno.serve(async (req) => {
@@ -14,68 +54,103 @@ Deno.serve(async (req) => {
   try {
     const { order_id, amount, item_details } = await req.json()
 
-    console.log('Creating QRIS payment:', { order_id, amount, item_details })
+    console.log('Creating DOKU QRIS payment:', { order_id, amount, item_details })
 
-    const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY')
-    if (!serverKey) {
-      throw new Error('MIDTRANS_SERVER_KEY is not configured')
+    const clientId = Deno.env.get('DOKU_CLIENT_ID')
+    const secretKey = Deno.env.get('DOKU_SECRET_KEY')
+
+    if (!clientId || !secretKey) {
+      throw new Error('DOKU credentials are not configured')
     }
 
-    // Determine if we're using sandbox or production
-    // For sandbox, use sandbox URL. For production, remove 'sandbox-' prefix
-    const isSandbox = serverKey.startsWith('SB-')
+    // DOKU API endpoint - use sandbox for testing
+    const isSandbox = true // Set to false for production
     const baseUrl = isSandbox 
-      ? 'https://api.sandbox.midtrans.com'
-      : 'https://api.midtrans.com'
+      ? 'https://api-sandbox.doku.com'
+      : 'https://api.doku.com'
 
-    // Create the transaction request for QRIS
-    const transactionDetails = {
-      payment_type: 'qris',
-      transaction_details: {
-        order_id: order_id,
-        gross_amount: amount,
+    const requestTarget = '/checkout/v1/payment'
+    const requestId = generateRequestId()
+    const requestTimestamp = new Date().toISOString()
+
+    // Create payment request body
+    const requestBody = {
+      order: {
+        amount: amount,
+        invoice_number: order_id,
+        currency: "IDR",
+        callback_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/doku-webhook`,
+        line_items: item_details?.map((item: any) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity
+        })) || []
       },
-      qris: {
-        acquirer: 'gopay', // You can also use 'airpay shopee' for ShopeePay
+      payment: {
+        payment_due_date: 60, // 60 minutes expiry
+        payment_method_types: ["QRIS"]
       },
-      item_details: item_details || [],
+      customer: {
+        name: "Customer",
+        email: "customer@example.com"
+      }
     }
 
-    console.log('Midtrans request:', JSON.stringify(transactionDetails, null, 2))
+    const bodyString = JSON.stringify(requestBody)
 
-    // Call Midtrans Core API to create QRIS transaction
-    const authString = btoa(`${serverKey}:`)
-    const response = await fetch(`${baseUrl}/v2/charge`, {
+    // Generate signature
+    const signature = await generateSignature(
+      clientId,
+      secretKey,
+      requestId,
+      requestTimestamp,
+      requestTarget,
+      bodyString
+    )
+
+    console.log('DOKU request:', {
+      url: `${baseUrl}${requestTarget}`,
+      requestId,
+      requestTimestamp,
+      body: requestBody
+    })
+
+    // Call DOKU API
+    const response = await fetch(`${baseUrl}${requestTarget}`, {
       method: 'POST',
       headers: {
-        'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${authString}`,
+        'Client-Id': clientId,
+        'Request-Id': requestId,
+        'Request-Timestamp': requestTimestamp,
+        'Signature': `HMACSHA256=${signature}`
       },
-      body: JSON.stringify(transactionDetails),
+      body: bodyString
     })
 
     const data = await response.json()
-    console.log('Midtrans response:', JSON.stringify(data, null, 2))
+    console.log('DOKU response:', JSON.stringify(data, null, 2))
 
-    if (data.status_code !== '201' && data.status_code !== '200') {
-      console.error('Midtrans error:', data)
-      throw new Error(data.status_message || 'Failed to create QRIS payment')
+    if (!response.ok) {
+      console.error('DOKU error:', data)
+      throw new Error(data.message?.en || data.error?.message || 'Failed to create QRIS payment')
     }
 
-    // Extract the QR code URL/string from the response
-    const qrCodeUrl = data.actions?.find((action: any) => action.name === 'generate-qr-code')?.url
-    const qrString = data.qr_string
+    // Extract QR code info from response
+    const qrisPayment = data.payment?.qris || data.response?.payment?.qris
+    const qrString = qrisPayment?.qr_content || data.qr_string
+    const qrCodeUrl = qrisPayment?.qr_url || null
 
     return new Response(
       JSON.stringify({
         status: 'success',
-        transaction_id: data.transaction_id,
-        order_id: data.order_id,
+        transaction_id: data.order?.invoice_number || order_id,
+        order_id: order_id,
         qr_code_url: qrCodeUrl,
         qr_string: qrString,
-        transaction_status: data.transaction_status,
-        expiry_time: data.expiry_time,
+        transaction_status: 'pending',
+        expiry_time: data.order?.expired_date || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        checkout_url: data.response?.payment?.url || data.payment_url
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -83,7 +158,7 @@ Deno.serve(async (req) => {
       }
     )
   } catch (error: unknown) {
-    console.error('Error creating QRIS payment:', error)
+    console.error('Error creating DOKU QRIS payment:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(
       JSON.stringify({ error: errorMessage }),
