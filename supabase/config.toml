@@ -14,3 +14,6 @@ verify_jwt = true
 
 [functions.check-payment-status]
 verify_jwt = true
+
+[functions.doku-webhook]
+verify_jwt = false
