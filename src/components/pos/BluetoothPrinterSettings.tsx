@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useBluetoothPrinter, BluetoothDevice } from '@/hooks/useBluetoothPrinter';
-import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw, TestTube } from 'lucide-react';
+import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw, TestTube, Link } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
 
 interface BluetoothPrinterSettingsProps {
   isOpen: boolean;
@@ -26,6 +27,8 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
 
   const [isConnecting, setIsConnecting] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [manualAddress, setManualAddress] = useState('');
+  const [showManualConnect, setShowManualConnect] = useState(false);
 
   const handleScan = async () => {
     await scanDevices();
@@ -40,6 +43,30 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
       toast.success(`Terhubung ke ${device.name}`);
     } else {
       toast.error('Gagal menghubungkan printer');
+    }
+  };
+
+  const handleManualConnect = async () => {
+    if (!manualAddress.trim()) {
+      toast.error('Masukkan MAC Address printer');
+      return;
+    }
+    
+    const device: BluetoothDevice = {
+      name: 'RPP02N',
+      address: manualAddress.trim().toUpperCase(),
+    };
+    
+    setIsConnecting(device.address);
+    const success = await connectPrinter(device);
+    setIsConnecting(null);
+    
+    if (success) {
+      toast.success(`Terhubung ke ${device.name}`);
+      setManualAddress('');
+      setShowManualConnect(false);
+    } else {
+      toast.error('Gagal menghubungkan printer. Pastikan MAC Address benar dan printer sudah di-pair.');
     }
   };
 
@@ -166,7 +193,7 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                 {isScanning ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Mencari Printer Eppos...
+                    Mencari Printer...
                   </>
                 ) : (
                   <>
@@ -176,6 +203,52 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                 )}
               </button>
 
+              {/* Manual Connect Toggle */}
+              <button
+                onClick={() => setShowManualConnect(!showManualConnect)}
+                className="w-full py-2 text-sm text-primary hover:text-primary/80 flex items-center justify-center gap-1"
+              >
+                <Link className="w-4 h-4" />
+                {showManualConnect ? 'Sembunyikan' : 'Koneksi Manual dengan MAC Address'}
+              </button>
+
+              {/* Manual Connect Form */}
+              {showManualConnect && (
+                <div className="p-4 bg-muted/50 rounded-xl space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Masukkan MAC Address printer RPP02N Anda. Lihat di Pengaturan Bluetooth HP → Pilih RPP02N → Lihat detail.
+                  </p>
+                  <Input
+                    placeholder="Contoh: 00:11:22:33:44:55"
+                    value={manualAddress}
+                    onChange={(e) => setManualAddress(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <button
+                    onClick={handleManualConnect}
+                    disabled={isConnecting !== null || !manualAddress.trim()}
+                    className={cn(
+                      "w-full py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 transition-all",
+                      isConnecting !== null || !manualAddress.trim()
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95"
+                    )}
+                  >
+                    {isConnecting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Menghubungkan...
+                      </>
+                    ) : (
+                      <>
+                        <Bluetooth className="w-4 h-4" />
+                        Hubungkan Printer
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Device List */}
               {devices.length > 0 && (
                 <div className="space-y-2">
@@ -184,7 +257,8 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                   </p>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {devices.map((device) => {
-                      const isEppos = device.name.toLowerCase().includes('eppos');
+                      const isEppos = device.name.toLowerCase().includes('eppos') || 
+                                     device.name.toLowerCase().includes('rpp');
                       const isCurrentlyConnected = connectedDevice?.address === device.address;
                       const isConnectingThis = isConnecting === device.address;
                       
@@ -233,14 +307,14 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
 
               {/* Instructions */}
               <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border">
-                <p><strong>Cara Menggunakan Printer Eppos:</strong></p>
+                <p><strong>Cara Menghubungkan Printer RPP02N/Eppos:</strong></p>
                 <ol className="list-decimal list-inside space-y-0.5">
-                  <li>Nyalakan printer Eppos Bluetooth</li>
-                  <li>Aktifkan Bluetooth di HP Android</li>
-                  <li>Pair printer dari pengaturan Bluetooth HP</li>
-                  <li>Tekan "Cari Printer Bluetooth"</li>
-                  <li>Pilih printer Eppos dari daftar</li>
-                  <li>Test print untuk memastikan koneksi</li>
+                  <li>Nyalakan printer dan aktifkan Bluetooth di HP</li>
+                  <li>Buka Pengaturan → Bluetooth di HP</li>
+                  <li>Pair/Sambungkan dengan printer "RPP02N"</li>
+                  <li>Kembali ke aplikasi ini</li>
+                  <li>Tekan "Cari Printer Bluetooth" atau gunakan "Koneksi Manual"</li>
+                  <li>Untuk koneksi manual: Lihat MAC Address di detail perangkat Bluetooth HP</li>
                 </ol>
               </div>
             </>

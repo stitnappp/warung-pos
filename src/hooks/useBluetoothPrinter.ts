@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 
 export interface BluetoothDevice {
@@ -30,25 +30,28 @@ export function useBluetoothPrinter() {
     error: null,
   });
 
-  const [bluetoothLE, setBluetoothLE] = useState<any>(null);
   const [thermalPrinter, setThermalPrinter] = useState<any>(null);
+  const listenerRef = useRef<any>(null);
+  const finishListenerRef = useRef<any>(null);
 
-  // Load plugins dynamically
+  // Load thermal printer plugin dynamically
   useEffect(() => {
     if (!isNative) return;
 
-    Promise.all([
-      import('@capacitor-community/bluetooth-le'),
-      import('capacitor-thermal-printer')
-    ]).then(([bleModule, printerModule]) => {
-      setBluetoothLE(bleModule.BleClient);
-      setThermalPrinter(printerModule.CapacitorThermalPrinter);
-    }).catch(console.error);
+    import('capacitor-thermal-printer')
+      .then((printerModule) => {
+        const printer = printerModule.CapacitorThermalPrinter;
+        setThermalPrinter(printer);
+        console.log('Thermal printer plugin loaded');
+      })
+      .catch((err) => {
+        console.error('Failed to load thermal printer plugin:', err);
+      });
   }, []);
 
-  // Scan for Bluetooth devices using BLE
+  // Scan for Bluetooth devices using thermal printer plugin's startScan
   const scanDevices = useCallback(async () => {
-    if (!isNative || !bluetoothLE) {
+    if (!isNative || !thermalPrinter) {
       setStatus(prev => ({ 
         ...prev, 
         error: 'Fitur ini hanya tersedia di aplikasi Android' 
@@ -59,69 +62,66 @@ export function useBluetoothPrinter() {
     try {
       setStatus(prev => ({ ...prev, isScanning: true, error: null, devices: [] }));
       
-      // Initialize BLE
-      await bluetoothLE.initialize();
-      
-      // Check if Bluetooth is enabled
-      const isEnabled = await bluetoothLE.isEnabled();
-      if (!isEnabled) {
-        setStatus(prev => ({ 
-          ...prev, 
-          isScanning: false, 
-          error: 'Bluetooth tidak aktif. Silakan aktifkan Bluetooth terlebih dahulu.' 
-        }));
-        return;
+      // Clean up previous listeners
+      if (listenerRef.current) {
+        await listenerRef.current.remove();
+        listenerRef.current = null;
+      }
+      if (finishListenerRef.current) {
+        await finishListenerRef.current.remove();
+        finishListenerRef.current = null;
       }
 
       const foundDevices: BluetoothDevice[] = [];
-      
-      // Request Bluetooth scan
-      await bluetoothLE.requestLEScan(
-        { 
-          allowDuplicates: false,
-        },
-        (result: any) => {
-          if (result.device && result.device.deviceId) {
-            const deviceName = result.device.name || result.localName || 'Unknown Device';
-            const device: BluetoothDevice = {
-              name: deviceName,
-              address: result.device.deviceId,
-            };
-            
-            // Prioritize Eppos and thermal printer devices
-            const isEppos = deviceName.toLowerCase().includes('eppos');
+
+      // Listen for discovered devices
+      listenerRef.current = await thermalPrinter.addListener('discoverDevices', (data: { devices: BluetoothDevice[] }) => {
+        console.log('Discovered devices:', data.devices);
+        
+        for (const device of data.devices) {
+          // Check if device is not already in list
+          if (!foundDevices.some(d => d.address === device.address)) {
+            // Prioritize Eppos, RPP, and thermal printer devices
+            const deviceName = device.name || 'Unknown Device';
+            const isEppos = deviceName.toLowerCase().includes('eppos') || 
+                           deviceName.toLowerCase().includes('rpp');
             const isPrinter = deviceName.toLowerCase().includes('printer') || 
                              deviceName.toLowerCase().includes('pos') ||
-                             deviceName.toLowerCase().includes('thermal') ||
-                             deviceName.toLowerCase().includes('bt-') ||
-                             deviceName.toLowerCase().includes('bluetooth');
+                             deviceName.toLowerCase().includes('thermal');
             
-            // Only add if not already in list
-            if (!foundDevices.some(d => d.address === device.address)) {
-              // Add Eppos/printer devices at the beginning
-              if (isEppos || isPrinter) {
-                foundDevices.unshift(device);
-              } else {
-                foundDevices.push(device);
-              }
-              setStatus(prev => ({ 
-                ...prev, 
-                devices: [...foundDevices]
-              }));
+            if (isEppos || isPrinter) {
+              foundDevices.unshift(device);
+            } else {
+              foundDevices.push(device);
             }
+            
+            setStatus(prev => ({ 
+              ...prev, 
+              devices: [...foundDevices]
+            }));
           }
         }
-      );
+      });
 
-      // Stop scanning after 10 seconds
+      // Listen for scan finish
+      finishListenerRef.current = await thermalPrinter.addListener('discoveryFinish', () => {
+        console.log('Discovery finished');
+        setStatus(prev => ({ ...prev, isScanning: false }));
+      });
+
+      // Start scanning - this uses Bluetooth Classic on Android
+      await thermalPrinter.startScan();
+      console.log('Started scanning for printers...');
+
+      // Auto stop after 15 seconds if not finished
       setTimeout(async () => {
         try {
-          await bluetoothLE.stopLEScan();
+          await thermalPrinter.stopScan();
         } catch (e) {
-          console.log('Scan already stopped');
+          console.log('Scan may have already stopped');
         }
         setStatus(prev => ({ ...prev, isScanning: false }));
-      }, 10000);
+      }, 15000);
 
     } catch (error: any) {
       console.error('Scan error:', error);
@@ -131,7 +131,7 @@ export function useBluetoothPrinter() {
         error: error.message || 'Gagal mencari printer. Pastikan Bluetooth aktif dan izin diberikan.' 
       }));
     }
-  }, [bluetoothLE]);
+  }, [thermalPrinter]);
 
   // Connect to a specific printer
   const connectPrinter = useCallback(async (device: BluetoothDevice) => {
