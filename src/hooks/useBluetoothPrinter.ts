@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 
-interface BluetoothDevice {
+export interface BluetoothDevice {
   name: string;
   address: string;
 }
@@ -17,6 +17,8 @@ interface PrinterStatus {
 
 // Check if running on native platform
 const isNative = Capacitor.isNativePlatform();
+
+const STORAGE_KEY = 'eppos_printer_device';
 
 export function useBluetoothPrinter() {
   const [status, setStatus] = useState<PrinterStatus>({
@@ -73,21 +75,35 @@ export function useBluetoothPrinter() {
 
       const foundDevices: BluetoothDevice[] = [];
       
-      // Request Bluetooth scan - this will show system dialog to select device
+      // Request Bluetooth scan
       await bluetoothLE.requestLEScan(
         { 
           allowDuplicates: false,
         },
         (result: any) => {
           if (result.device && result.device.deviceId) {
+            const deviceName = result.device.name || result.localName || 'Unknown Device';
             const device: BluetoothDevice = {
-              name: result.device.name || result.localName || 'Unknown Device',
+              name: deviceName,
               address: result.device.deviceId,
             };
             
+            // Prioritize Eppos and thermal printer devices
+            const isEppos = deviceName.toLowerCase().includes('eppos');
+            const isPrinter = deviceName.toLowerCase().includes('printer') || 
+                             deviceName.toLowerCase().includes('pos') ||
+                             deviceName.toLowerCase().includes('thermal') ||
+                             deviceName.toLowerCase().includes('bt-') ||
+                             deviceName.toLowerCase().includes('bluetooth');
+            
             // Only add if not already in list
             if (!foundDevices.some(d => d.address === device.address)) {
-              foundDevices.push(device);
+              // Add Eppos/printer devices at the beginning
+              if (isEppos || isPrinter) {
+                foundDevices.unshift(device);
+              } else {
+                foundDevices.push(device);
+              }
               setStatus(prev => ({ 
                 ...prev, 
                 devices: [...foundDevices]
@@ -136,14 +152,14 @@ export function useBluetoothPrinter() {
       }));
       
       // Save to localStorage for reconnection
-      localStorage.setItem('lastPrinter', JSON.stringify(device));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(device));
       
       return true;
     } catch (error: any) {
       console.error('Connect error:', error);
       setStatus(prev => ({ 
         ...prev, 
-        error: error.message || 'Gagal koneksi ke printer' 
+        error: error.message || 'Gagal koneksi ke printer. Pastikan printer sudah di-pair.' 
       }));
       return false;
     }
@@ -160,7 +176,7 @@ export function useBluetoothPrinter() {
         isConnected: false, 
         connectedDevice: null 
       }));
-      localStorage.removeItem('lastPrinter');
+      localStorage.removeItem(STORAGE_KEY);
     } catch (error: any) {
       setStatus(prev => ({ 
         ...prev, 
@@ -168,6 +184,52 @@ export function useBluetoothPrinter() {
       }));
     }
   }, [thermalPrinter]);
+
+  // Test print function
+  const testPrint = useCallback(async () => {
+    if (!isNative || !thermalPrinter) {
+      return false;
+    }
+
+    if (!status.isConnected) {
+      setStatus(prev => ({ ...prev, error: 'Printer belum terhubung' }));
+      return false;
+    }
+
+    try {
+      setStatus(prev => ({ ...prev, isPrinting: true, error: null }));
+
+      const dateStr = new Date().toLocaleDateString('id-ID');
+      const timeStr = new Date().toLocaleTimeString('id-ID');
+
+      await thermalPrinter.begin()
+        .align('center')
+        .bold()
+        .doubleWidth()
+        .text('TEST PRINT\n')
+        .clearFormatting()
+        .text('================================\n')
+        .text('Printer Eppos Terhubung!\n')
+        .text(`Tanggal: ${dateStr}\n`)
+        .text(`Waktu: ${timeStr}\n`)
+        .text('================================\n')
+        .text('RM.MINANG MAIMBAOE\n')
+        .text('Sistem Kasir Digital\n')
+        .text('\n\n\n')
+        .cutPaper()
+        .write();
+
+      setStatus(prev => ({ ...prev, isPrinting: false }));
+      return true;
+    } catch (error: any) {
+      setStatus(prev => ({ 
+        ...prev, 
+        isPrinting: false, 
+        error: error.message || 'Test print gagal' 
+      }));
+      return false;
+    }
+  }, [status.isConnected, thermalPrinter]);
 
   // Print receipt
   const printReceipt = useCallback(async (receiptData: {
@@ -203,66 +265,78 @@ export function useBluetoothPrinter() {
 
       const formatPrice = (price: number) => {
         return new Intl.NumberFormat('id-ID', {
-          style: 'currency',
-          currency: 'IDR',
           minimumFractionDigits: 0,
         }).format(price);
       };
 
-      // Build receipt using the plugin's API
-      const printer = thermalPrinter.begin();
-      
-      // Header
-      await printer
-        .align('center')
-        .bold()
-        .text('WARUNG MAKAN\n')
-        .clearFormatting()
-        .text('Sistem Kasir Digital\n')
-        .text('Jl. Contoh No. 123\n')
-        .text('--------------------------------\n')
-        .align('left')
-        .text(`No. Order: ${receiptData.orderNumber}\n`)
-        .text(`Kasir: ${receiptData.cashierName}\n`);
-
-      if (receiptData.tableNumber) {
-        await printer.text(`Meja: ${receiptData.tableNumber}\n`);
-      }
-
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
-      await printer
-        .text(`Tanggal: ${dateStr}\n`)
-        .text(`Waktu: ${timeStr}\n`)
+
+      // Build receipt using the plugin's API
+      let printer = thermalPrinter.begin();
+      
+      // Header - Restaurant name with double size
+      printer = printer
+        .align('center')
+        .bold()
+        .doubleWidth()
+        .text('RM.MINANG MAIMBAOE\n')
+        .clearFormatting()
+        .align('center')
+        .text('Sistem Kasir Digital\n')
+        .text('Jln. Gatot Subroto no.10\n')
+        .text('Depan Balai Desa Losari Kidul\n')
+        .text('Kec. Losari, Kab. Cirebon\n')
+        .text('================================\n');
+
+      // Order info
+      printer = printer
+        .align('left')
+        .text(`No. Order : ${receiptData.orderNumber}\n`)
+        .text(`Kasir     : ${receiptData.cashierName}\n`);
+
+      if (receiptData.tableNumber) {
+        printer = printer.text(`Meja      : ${receiptData.tableNumber}\n`);
+      }
+
+      printer = printer
+        .text(`Tanggal   : ${dateStr}\n`)
+        .text(`Waktu     : ${timeStr}\n`)
         .text('--------------------------------\n');
 
       // Items
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
-        await printer.text(`${item.quantity}x ${item.name}\n`);
-        await printer.align('right').text(`${formatPrice(itemTotal)}\n`).align('left');
+        printer = printer
+          .align('left')
+          .text(`${item.quantity}x ${item.name}\n`)
+          .align('right')
+          .text(`Rp ${formatPrice(itemTotal)}\n`);
       }
 
-      await printer.text('--------------------------------\n');
+      printer = printer.align('left').text('--------------------------------\n');
 
       // Totals
-      await printer.text(`Subtotal: ${formatPrice(receiptData.subtotal)}\n`);
+      printer = printer
+        .text(`Subtotal      : Rp ${formatPrice(receiptData.subtotal)}\n`);
       
       if (receiptData.discount > 0) {
-        await printer.text(`Diskon: -${formatPrice(receiptData.discount)}\n`);
+        printer = printer.text(`Diskon        : -Rp ${formatPrice(receiptData.discount)}\n`);
       }
       
-      await printer
+      printer = printer
         .bold()
-        .text(`TOTAL: ${formatPrice(receiptData.total)}\n`)
+        .text(`TOTAL         : Rp ${formatPrice(receiptData.total)}\n`)
         .clearFormatting()
         .text('--------------------------------\n')
-        .text(`Bayar (${paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod}): ${formatPrice(receiptData.amountPaid)}\n`)
-        .text(`Kembali: ${formatPrice(receiptData.change)}\n`)
-        .text('--------------------------------\n')
+        .text(`Bayar (${paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod})\n`)
+        .text(`              : Rp ${formatPrice(receiptData.amountPaid)}\n`)
+        .text(`Kembali       : Rp ${formatPrice(receiptData.change)}\n`)
+        .text('================================\n')
         .align('center')
         .text('Terima Kasih\n')
         .text('Selamat Menikmati!\n')
+        .text('================================\n')
         .text('\n\n\n');
 
       // Print and cut paper
@@ -271,6 +345,7 @@ export function useBluetoothPrinter() {
       setStatus(prev => ({ ...prev, isPrinting: false }));
       return true;
     } catch (error: any) {
+      console.error('Print error:', error);
       setStatus(prev => ({ 
         ...prev, 
         isPrinting: false, 
@@ -284,13 +359,17 @@ export function useBluetoothPrinter() {
   useEffect(() => {
     if (!isNative || !thermalPrinter) return;
 
-    const lastPrinter = localStorage.getItem('lastPrinter');
+    const lastPrinter = localStorage.getItem(STORAGE_KEY);
     if (lastPrinter) {
       try {
         const device = JSON.parse(lastPrinter) as BluetoothDevice;
-        connectPrinter(device).catch(console.error);
+        connectPrinter(device).catch(() => {
+          // Failed to reconnect, clear storage
+          localStorage.removeItem(STORAGE_KEY);
+        });
       } catch (e) {
         console.error('Failed to parse last printer:', e);
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
   }, [connectPrinter, thermalPrinter]);
@@ -302,5 +381,6 @@ export function useBluetoothPrinter() {
     connectPrinter,
     disconnectPrinter,
     printReceipt,
+    testPrint,
   };
 }
