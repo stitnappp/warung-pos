@@ -1,5 +1,6 @@
-import { useBluetoothPrinter } from '@/hooks/useBluetoothPrinter';
-import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { useBluetoothPrinter, BluetoothDevice } from '@/hooks/useBluetoothPrinter';
+import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw, TestTube } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -14,19 +15,27 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
     isConnected,
     connectedDevice,
     isScanning,
+    isPrinting,
     devices,
     error,
     scanDevices,
     connectPrinter,
     disconnectPrinter,
+    testPrint,
   } = useBluetoothPrinter();
+
+  const [isConnecting, setIsConnecting] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   const handleScan = async () => {
     await scanDevices();
   };
 
-  const handleConnect = async (device: { name: string; address: string }) => {
+  const handleConnect = async (device: BluetoothDevice) => {
+    setIsConnecting(device.address);
     const success = await connectPrinter(device);
+    setIsConnecting(null);
+    
     if (success) {
       toast.success(`Terhubung ke ${device.name}`);
     } else {
@@ -39,6 +48,18 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
     toast.info('Printer terputus');
   };
 
+  const handleTestPrint = async () => {
+    setIsTesting(true);
+    const success = await testPrint();
+    setIsTesting(false);
+    
+    if (success) {
+      toast.success('Test print berhasil!');
+    } else {
+      toast.error('Test print gagal');
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -48,7 +69,7 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Bluetooth className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold">Bluetooth Printer</h2>
+            <h2 className="text-lg font-bold">Printer Bluetooth Eppos</h2>
           </div>
           <button
             onClick={onClose}
@@ -83,23 +104,46 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                       <p className="font-medium text-success">Terhubung</p>
                       <p className="text-sm text-muted-foreground">{connectedDevice?.name}</p>
                     </div>
-                    <button
-                      onClick={handleDisconnect}
-                      className="px-3 py-1.5 text-sm bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"
-                    >
-                      Putus
-                    </button>
                   </>
                 ) : (
                   <>
                     <BluetoothSearching className="w-6 h-6 text-muted-foreground" />
                     <div className="flex-1">
                       <p className="font-medium">Tidak Terhubung</p>
-                      <p className="text-sm text-muted-foreground">Cari printer untuk menghubungkan</p>
+                      <p className="text-sm text-muted-foreground">Cari printer Eppos untuk menghubungkan</p>
                     </div>
                   </>
                 )}
               </div>
+
+              {/* Action Buttons when connected */}
+              {isConnected && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleTestPrint}
+                    disabled={isTesting || isPrinting}
+                    className={cn(
+                      "flex-1 py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-all",
+                      isTesting || isPrinting
+                        ? "bg-muted text-muted-foreground"
+                        : "bg-primary/10 text-primary hover:bg-primary/20 active:scale-95"
+                    )}
+                  >
+                    {isTesting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <TestTube className="w-4 h-4" />
+                    )}
+                    {isTesting ? 'Printing...' : 'Test Print'}
+                  </button>
+                  <button
+                    onClick={handleDisconnect}
+                    className="px-4 py-2.5 text-sm bg-destructive/10 text-destructive rounded-xl hover:bg-destructive/20 transition-colors active:scale-95"
+                  >
+                    Putuskan
+                  </button>
+                </div>
+              )}
 
               {/* Error Display */}
               {error && (
@@ -122,12 +166,12 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                 {isScanning ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Mencari Printer...
+                    Mencari Printer Eppos...
                   </>
                 ) : (
                   <>
                     <RefreshCw className="w-5 h-5" />
-                    Cari Printer
+                    Cari Printer Bluetooth
                   </>
                 )}
               </button>
@@ -139,40 +183,64 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                     Printer Ditemukan ({devices.length})
                   </p>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {devices.map((device) => (
-                      <button
-                        key={device.address}
-                        onClick={() => handleConnect(device)}
-                        disabled={isConnected && connectedDevice?.address === device.address}
-                        className={cn(
-                          "w-full p-3 rounded-xl flex items-center gap-3 text-left transition-all",
-                          connectedDevice?.address === device.address
-                            ? "bg-success/10 border border-success/20"
-                            : "bg-secondary hover:bg-secondary/80 active:scale-95"
-                        )}
-                      >
-                        <Printer className="w-5 h-5 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{device.name || 'Unknown Device'}</p>
-                          <p className="text-xs text-muted-foreground truncate">{device.address}</p>
-                        </div>
-                        {connectedDevice?.address === device.address && (
-                          <CheckCircle className="w-5 h-5 text-success" />
-                        )}
-                      </button>
-                    ))}
+                    {devices.map((device) => {
+                      const isEppos = device.name.toLowerCase().includes('eppos');
+                      const isCurrentlyConnected = connectedDevice?.address === device.address;
+                      const isConnectingThis = isConnecting === device.address;
+                      
+                      return (
+                        <button
+                          key={device.address}
+                          onClick={() => handleConnect(device)}
+                          disabled={isCurrentlyConnected || isConnecting !== null}
+                          className={cn(
+                            "w-full p-3 rounded-xl flex items-center gap-3 text-left transition-all",
+                            isCurrentlyConnected
+                              ? "bg-success/10 border border-success/20"
+                              : isEppos
+                              ? "bg-primary/5 border border-primary/20 hover:bg-primary/10"
+                              : "bg-secondary hover:bg-secondary/80",
+                            !isCurrentlyConnected && isConnecting === null && "active:scale-95"
+                          )}
+                        >
+                          <Printer className={cn(
+                            "w-5 h-5 flex-shrink-0",
+                            isEppos ? "text-primary" : "text-muted-foreground"
+                          )} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate">{device.name || 'Unknown Device'}</p>
+                              {isEppos && (
+                                <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">
+                                  EPPOS
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{device.address}</p>
+                          </div>
+                          {isCurrentlyConnected && (
+                            <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
+                          )}
+                          {isConnectingThis && (
+                            <Loader2 className="w-5 h-5 animate-spin flex-shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Instructions */}
               <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border">
-                <p><strong>Cara Menggunakan:</strong></p>
+                <p><strong>Cara Menggunakan Printer Eppos:</strong></p>
                 <ol className="list-decimal list-inside space-y-0.5">
-                  <li>Nyalakan Bluetooth printer Anda</li>
-                  <li>Pastikan printer sudah di-pair dengan HP</li>
-                  <li>Tekan "Cari Printer" untuk mencari</li>
-                  <li>Pilih printer dari daftar untuk menghubungkan</li>
+                  <li>Nyalakan printer Eppos Bluetooth</li>
+                  <li>Aktifkan Bluetooth di HP Android</li>
+                  <li>Pair printer dari pengaturan Bluetooth HP</li>
+                  <li>Tekan "Cari Printer Bluetooth"</li>
+                  <li>Pilih printer Eppos dari daftar</li>
+                  <li>Test print untuk memastikan koneksi</li>
                 </ol>
               </div>
             </>
