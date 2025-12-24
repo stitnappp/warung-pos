@@ -279,84 +279,74 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt using normal text size for better aesthetics
+      // Build receipt - 58mm paper = 32 chars per line
       let printer = thermalPrinter.begin();
 
       // Get restaurant settings or use defaults
       const rs = receiptData.restaurantSettings;
       const restaurantName = rs?.restaurant_name || 'RM.MINANG MAIMBAOE';
-      const addressLine1 = rs?.address_line1 || 'Jln. Gatot Subroto no.10';
-      const addressLine2 = rs?.address_line2 || 'Depan Balai Desa Losari Kidul';
-      const addressLine3 = rs?.address_line3 || 'Losari, Cirebon 45192';
+      const addressLine1 = rs?.address_line1 || '';
+      const addressLine2 = rs?.address_line2 || '';
+      const addressLine3 = rs?.address_line3 || '';
       const whatsappNumber = rs?.whatsapp_number;
       const instagramHandle = rs?.instagram_handle;
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
+
+      // Helper to pad/truncate text for 32 char width
+      const line = '================================';
+      const padRight = (text: string, len: number) => text.slice(0, len).padEnd(len);
+      const padLeft = (text: string, len: number) => text.slice(0, len).padStart(len);
       
-      // Header - Restaurant name (normal size, bold)
-      printer = printer
-        .align('center')
-        .bold()
-        .text(`${restaurantName}\n`)
-        .clearFormatting()
-        .align('center');
-      
+      // Header
+      printer = printer.align('center').bold().text(`${restaurantName}\n`).clearFormatting().align('center');
       if (addressLine1) printer = printer.text(`${addressLine1}\n`);
       if (addressLine2) printer = printer.text(`${addressLine2}\n`);
       if (addressLine3) printer = printer.text(`${addressLine3}\n`);
       if (whatsappNumber) printer = printer.text(`WA: ${whatsappNumber}\n`);
       if (instagramHandle) printer = printer.text(`IG: ${instagramHandle}\n`);
-      
-      printer = printer.text('--------------------------------\n');
+      printer = printer.text(`${line}\n`);
 
-      // Order info - compact format
-      printer = printer
-        .align('left')
-        .text(`#${receiptData.orderNumber}\n`)
+      // Order info
+      printer = printer.align('left')
+        .text(`No: ${receiptData.orderNumber}\n`)
         .text(`Kasir: ${receiptData.cashierName}\n`);
-
       if (receiptData.tableNumber) {
         printer = printer.text(`Meja: ${receiptData.tableNumber}\n`);
       }
+      printer = printer.text(`${dateStr} ${timeStr}\n`).text(`${line}\n`);
 
-      printer = printer
-        .text(`${dateStr} ${timeStr}\n`)
-        .text('--------------------------------\n');
-
-      // Items - single line format
+      // Items - format: name + qty on left, price on right
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
-        const itemName = item.name.length > 16 ? item.name.substring(0, 16) : item.name;
-        printer = printer
-          .align('left')
-          .text(`${item.quantity}x ${itemName}\n`)
-          .align('right')
-          .text(`${formatPrice(itemTotal)}\n`);
+        const priceStr = formatPrice(itemTotal);
+        const maxNameLen = 32 - priceStr.length - 4; // 4 = "Nx " + space
+        const itemName = item.name.length > maxNameLen ? item.name.slice(0, maxNameLen) : item.name;
+        const leftPart = `${item.quantity}x ${itemName}`;
+        const fullLine = padRight(leftPart, 32 - priceStr.length) + priceStr;
+        printer = printer.align('left').text(`${fullLine}\n`);
       }
 
-      printer = printer.align('left').text('--------------------------------\n');
+      printer = printer.text(`${line}\n`);
 
-      // Totals - compact format
+      // Totals
       if (receiptData.discount > 0) {
-        printer = printer.text(`Subtotal: Rp${formatPrice(receiptData.subtotal)}\n`);
-        printer = printer.text(`Diskon: -Rp${formatPrice(receiptData.discount)}\n`);
+        const subLine = padRight('Subtotal', 20) + padLeft(`Rp${formatPrice(receiptData.subtotal)}`, 12);
+        const discLine = padRight('Diskon', 20) + padLeft(`-Rp${formatPrice(receiptData.discount)}`, 12);
+        printer = printer.text(`${subLine}\n`).text(`${discLine}\n`);
       }
       
-      printer = printer
-        .bold()
-        .text(`TOTAL: Rp${formatPrice(receiptData.total)}\n`)
-        .clearFormatting()
-        .text('--------------------------------\n')
-        .text(`${paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod}: Rp${formatPrice(receiptData.amountPaid)}\n`);
+      const totalLine = padRight('TOTAL', 20) + padLeft(`Rp${formatPrice(receiptData.total)}`, 12);
+      printer = printer.bold().text(`${totalLine}\n`).clearFormatting().text(`${line}\n`);
+
+      const payLine = padRight(paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod, 20) + padLeft(`Rp${formatPrice(receiptData.amountPaid)}`, 12);
+      printer = printer.text(`${payLine}\n`);
       
       if (receiptData.change > 0) {
-        printer = printer.text(`Kembali: Rp${formatPrice(receiptData.change)}\n`);
+        const changeLine = padRight('Kembali', 20) + padLeft(`Rp${formatPrice(receiptData.change)}`, 12);
+        printer = printer.text(`${changeLine}\n`);
       }
       
-      printer = printer
-        .text('--------------------------------\n')
-        .align('center')
-        .text(`${footerMessage}\n`)
-        .text('\n\n');
+      printer = printer.text(`${line}\n`).align('center').text(`${footerMessage}\n`).text('\n\n');
 
       // Print and cut paper
       await printer.cutPaper().write();
