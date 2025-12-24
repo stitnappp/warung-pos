@@ -202,20 +202,18 @@ export function useBluetoothPrinter() {
       const dateStr = new Date().toLocaleDateString('id-ID');
       const timeStr = new Date().toLocaleTimeString('id-ID');
 
+      // Use normal text size for better aesthetics
       await thermalPrinter.begin()
         .align('center')
         .bold()
-        .doubleWidth()
         .text('TEST PRINT\n')
         .clearFormatting()
-        .text('================================\n')
-        .text('Printer Eppos Terhubung!\n')
-        .text(`Tanggal: ${dateStr}\n`)
-        .text(`Waktu: ${timeStr}\n`)
-        .text('================================\n')
+        .text('--------------------------------\n')
+        .text('Printer Terhubung!\n')
+        .text(`${dateStr} ${timeStr}\n`)
+        .text('--------------------------------\n')
         .text('RM.MINANG MAIMBAOE\n')
-        .text('Sistem Kasir Digital\n')
-        .text('\n\n\n')
+        .text('\n\n')
         .cutPaper()
         .write();
 
@@ -272,72 +270,70 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt using the plugin's API
+      // Build receipt using normal text size for better aesthetics
       let printer = thermalPrinter.begin();
       
-      // Header - Restaurant name with double size
+      // Header - Restaurant name (normal size, bold)
       printer = printer
         .align('center')
         .bold()
-        .doubleWidth()
         .text('RM.MINANG MAIMBAOE\n')
         .clearFormatting()
         .align('center')
-        .text('Sistem Kasir Digital\n')
         .text('Jln. Gatot Subroto no.10\n')
         .text('Depan Balai Desa Losari Kidul\n')
-        .text('Kec. Losari, Kab. Cirebon\n')
-        .text('================================\n');
+        .text('Losari, Cirebon 45192\n')
+        .text('--------------------------------\n');
 
-      // Order info
+      // Order info - compact format
       printer = printer
         .align('left')
-        .text(`No. Order : ${receiptData.orderNumber}\n`)
-        .text(`Kasir     : ${receiptData.cashierName}\n`);
+        .text(`#${receiptData.orderNumber}\n`)
+        .text(`Kasir: ${receiptData.cashierName}\n`);
 
       if (receiptData.tableNumber) {
-        printer = printer.text(`Meja      : ${receiptData.tableNumber}\n`);
+        printer = printer.text(`Meja: ${receiptData.tableNumber}\n`);
       }
 
       printer = printer
-        .text(`Tanggal   : ${dateStr}\n`)
-        .text(`Waktu     : ${timeStr}\n`)
+        .text(`${dateStr} ${timeStr}\n`)
         .text('--------------------------------\n');
 
-      // Items
+      // Items - single line format
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
+        const itemName = item.name.length > 16 ? item.name.substring(0, 16) : item.name;
         printer = printer
           .align('left')
-          .text(`${item.quantity}x ${item.name}\n`)
+          .text(`${item.quantity}x ${itemName}\n`)
           .align('right')
-          .text(`Rp ${formatPrice(itemTotal)}\n`);
+          .text(`${formatPrice(itemTotal)}\n`);
       }
 
       printer = printer.align('left').text('--------------------------------\n');
 
-      // Totals
-      printer = printer
-        .text(`Subtotal      : Rp ${formatPrice(receiptData.subtotal)}\n`);
-      
+      // Totals - compact format
       if (receiptData.discount > 0) {
-        printer = printer.text(`Diskon        : -Rp ${formatPrice(receiptData.discount)}\n`);
+        printer = printer.text(`Subtotal: Rp${formatPrice(receiptData.subtotal)}\n`);
+        printer = printer.text(`Diskon: -Rp${formatPrice(receiptData.discount)}\n`);
       }
       
       printer = printer
         .bold()
-        .text(`TOTAL         : Rp ${formatPrice(receiptData.total)}\n`)
+        .text(`TOTAL: Rp${formatPrice(receiptData.total)}\n`)
         .clearFormatting()
         .text('--------------------------------\n')
-        .text(`Bayar (${paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod})\n`)
-        .text(`              : Rp ${formatPrice(receiptData.amountPaid)}\n`)
-        .text(`Kembali       : Rp ${formatPrice(receiptData.change)}\n`)
-        .text('================================\n')
+        .text(`${paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod}: Rp${formatPrice(receiptData.amountPaid)}\n`);
+      
+      if (receiptData.change > 0) {
+        printer = printer.text(`Kembali: Rp${formatPrice(receiptData.change)}\n`);
+      }
+      
+      printer = printer
+        .text('--------------------------------\n')
         .align('center')
-        .text('Terima Kasih\n')
-        .text('Selamat Menikmati!\n')
-        .text('================================\n')
-        .text('\n\n\n');
+        .text('Terima Kasih!\n')
+        .text('\n\n');
 
       // Print and cut paper
       await printer.cutPaper().write();
