@@ -8,6 +8,7 @@ import { toast } from '@/hooks/use-toast';
 import { useBluetoothPrinter } from '@/hooks/useBluetoothPrinter';
 import { printReceipt as webPrintReceipt } from '@/utils/receiptPrinter';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRestaurantSettings } from '@/hooks/useRestaurantSettings';
 
 interface CheckoutDialogProps {
   isOpen: boolean;
@@ -56,6 +57,7 @@ export function CheckoutDialog({
   // Bluetooth printer hook
   const bluetoothPrinter = useBluetoothPrinter();
   const { fullName } = useAuth();
+  const { settings: restaurantSettings } = useRestaurantSettings();
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -224,6 +226,15 @@ export function CheckoutDialog({
       amountPaid: finalAmountPaid,
       change: change,
       timestamp: new Date(),
+      restaurantSettings: restaurantSettings ? {
+        restaurant_name: restaurantSettings.restaurant_name,
+        address_line1: restaurantSettings.address_line1,
+        address_line2: restaurantSettings.address_line2,
+        address_line3: restaurantSettings.address_line3,
+        whatsapp_number: restaurantSettings.whatsapp_number,
+        instagram_handle: restaurantSettings.instagram_handle,
+        footer_message: restaurantSettings.footer_message,
+      } : undefined,
     };
 
     // Print receipt immediately using Bluetooth printer if connected

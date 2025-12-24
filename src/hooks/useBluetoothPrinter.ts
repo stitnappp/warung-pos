@@ -242,6 +242,15 @@ export function useBluetoothPrinter() {
     amountPaid: number;
     change: number;
     timestamp: Date;
+    restaurantSettings?: {
+      restaurant_name: string;
+      address_line1: string | null;
+      address_line2: string | null;
+      address_line3: string | null;
+      whatsapp_number: string | null;
+      instagram_handle: string | null;
+      footer_message: string | null;
+    };
   }) => {
     if (!isNative || !thermalPrinter) {
       return false;
@@ -272,20 +281,32 @@ export function useBluetoothPrinter() {
 
       // Build receipt using normal text size for better aesthetics
       let printer = thermalPrinter.begin();
+
+      // Get restaurant settings or use defaults
+      const rs = receiptData.restaurantSettings;
+      const restaurantName = rs?.restaurant_name || 'RM.MINANG MAIMBAOE';
+      const addressLine1 = rs?.address_line1 || 'Jln. Gatot Subroto no.10';
+      const addressLine2 = rs?.address_line2 || 'Depan Balai Desa Losari Kidul';
+      const addressLine3 = rs?.address_line3 || 'Losari, Cirebon 45192';
+      const whatsappNumber = rs?.whatsapp_number;
+      const instagramHandle = rs?.instagram_handle;
+      const footerMessage = rs?.footer_message || 'Terima Kasih!';
       
       // Header - Restaurant name (normal size, bold)
       printer = printer
         .align('center')
         .bold()
-        .text('RM.MINANG MAIMBAOE\n')
+        .text(`${restaurantName}\n`)
         .clearFormatting()
-        .align('center')
-        .text('Jln. Gatot Subroto no.10\n')
-        .text('Depan Balai Desa Losari Kidul\n')
-        .text('Losari, Cirebon 45192\n')
-        .text('WA: 0812-XXXX-XXXX\n')
-        .text('IG: @minangmaimbaoe\n')
-        .text('--------------------------------\n');
+        .align('center');
+      
+      if (addressLine1) printer = printer.text(`${addressLine1}\n`);
+      if (addressLine2) printer = printer.text(`${addressLine2}\n`);
+      if (addressLine3) printer = printer.text(`${addressLine3}\n`);
+      if (whatsappNumber) printer = printer.text(`WA: ${whatsappNumber}\n`);
+      if (instagramHandle) printer = printer.text(`IG: ${instagramHandle}\n`);
+      
+      printer = printer.text('--------------------------------\n');
 
       // Order info - compact format
       printer = printer
@@ -334,7 +355,7 @@ export function useBluetoothPrinter() {
       printer = printer
         .text('--------------------------------\n')
         .align('center')
-        .text('Terima Kasih!\n')
+        .text(`${footerMessage}\n`)
         .text('\n\n');
 
       // Print and cut paper

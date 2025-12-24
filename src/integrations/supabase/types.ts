@@ -369,6 +369,45 @@ export type Database = {
         }
         Relationships: []
       }
+      restaurant_settings: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          address_line3: string | null
+          created_at: string
+          footer_message: string | null
+          id: string
+          instagram_handle: string | null
+          restaurant_name: string
+          updated_at: string
+          whatsapp_number: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          address_line3?: string | null
+          created_at?: string
+          footer_message?: string | null
+          id?: string
+          instagram_handle?: string | null
+          restaurant_name?: string
+          updated_at?: string
+          whatsapp_number?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          address_line3?: string | null
+          created_at?: string
+          footer_message?: string | null
+          id?: string
+          instagram_handle?: string | null
+          restaurant_name?: string
+          updated_at?: string
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       restaurant_tables: {
         Row: {
           capacity: number | null

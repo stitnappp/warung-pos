@@ -14,6 +14,7 @@ import { ResetDataDialog } from '@/components/pos/ResetDataDialog';
 import { PaymentNotifications } from '@/components/pos/PaymentNotifications';
 import { TelegramNotificationSettings } from '@/components/pos/TelegramNotificationSettings';
 import { AccountingView } from '@/components/pos/AccountingView';
+import { RestaurantSettingsPanel } from '@/components/pos/RestaurantSettingsPanel';
 
 type AdminTab = 'menu' | 'tables' | 'reports' | 'accounting' | 'settings';
 
@@ -184,6 +185,9 @@ function ReportsView() {
 function SettingsView() {
   return (
     <div className="space-y-6">
+      {/* Restaurant Settings for Receipt */}
+      <RestaurantSettingsPanel />
+
       {/* Telegram Notification Settings */}
       <TelegramNotificationSettings />
 
