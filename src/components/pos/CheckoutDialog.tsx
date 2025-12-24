@@ -5,6 +5,9 @@ import { X, Banknote, CreditCard, QrCode, Printer, MapPin, ArrowLeft, CheckCircl
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useBluetoothPrinter } from '@/hooks/useBluetoothPrinter';
+import { printReceipt as webPrintReceipt } from '@/utils/receiptPrinter';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CheckoutDialogProps {
   isOpen: boolean;
@@ -50,6 +53,9 @@ export function CheckoutDialog({
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [qrisGenerating, setQrisGenerating] = useState(false);
 
+  // Bluetooth printer hook
+  const bluetoothPrinter = useBluetoothPrinter();
+  const { fullName } = useAuth();
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -191,7 +197,7 @@ export function CheckoutDialog({
     return () => clearInterval(interval);
   }, [showQrisPayment, qrisData?.orderId]);
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (paymentMethod === 'qris') {
       handleCreateQrisPayment();
       return;
@@ -200,15 +206,49 @@ export function CheckoutDialog({
     if (paymentMethod === 'cash' && amountPaid < total) return;
 
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setReceiptData({
-        paymentMethod,
-        amountPaid: paymentMethod === 'cash' ? amountPaid : total,
-        change: paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0,
-      });
-      setShowReceipt(true);
-    }, 1000);
+    
+    const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
+    const finalAmountPaid = paymentMethod === 'cash' ? amountPaid : total;
+    const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
+
+    // Build receipt data
+    const receiptPrintData = {
+      orderNumber: `ORD-${Date.now()}`,
+      cashierName: fullName || 'Kasir',
+      tableNumber: tableNum,
+      items: items,
+      subtotal: total,
+      discount: 0,
+      total: total,
+      paymentMethod,
+      amountPaid: finalAmountPaid,
+      change: change,
+      timestamp: new Date(),
+    };
+
+    // Print receipt immediately using Bluetooth printer if connected
+    try {
+      if (bluetoothPrinter.isNative && bluetoothPrinter.isConnected) {
+        const btSuccess = await bluetoothPrinter.printReceipt(receiptPrintData);
+        if (!btSuccess) {
+          // Fallback to web print if Bluetooth fails
+          webPrintReceipt(receiptPrintData);
+        }
+      } else {
+        webPrintReceipt(receiptPrintData);
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      webPrintReceipt(receiptPrintData);
+    }
+
+    setIsProcessing(false);
+    setReceiptData({
+      paymentMethod,
+      amountPaid: finalAmountPaid,
+      change: change,
+    });
+    setShowReceipt(true);
   };
 
   const handleBackToMenu = () => {
@@ -349,7 +389,7 @@ export function CheckoutDialog({
               </div>
               <h3 className="text-xl font-bold text-success">Pembayaran Berhasil!</h3>
               <p className="text-sm text-muted-foreground text-center">
-                Struk telah dibuka di browser Chrome untuk dicetak
+                Struk telah dicetak ke printer
               </p>
             </div>
 
