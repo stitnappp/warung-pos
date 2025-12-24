@@ -15,6 +15,7 @@ import { PaymentNotifications } from '@/components/pos/PaymentNotifications';
 import { TelegramNotificationSettings } from '@/components/pos/TelegramNotificationSettings';
 import { AccountingView } from '@/components/pos/AccountingView';
 import { RestaurantSettingsPanel } from '@/components/pos/RestaurantSettingsPanel';
+import { DataBackupRestore } from '@/components/pos/DataBackupRestore';
 
 type AdminTab = 'menu' | 'tables' | 'reports' | 'accounting' | 'settings';
 
@@ -185,6 +186,9 @@ function ReportsView() {
 function SettingsView() {
   return (
     <div className="space-y-6">
+      {/* Backup & Restore */}
+      <DataBackupRestore />
+
       {/* Restaurant Settings for Receipt */}
       <RestaurantSettingsPanel />
 
