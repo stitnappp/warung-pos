@@ -283,6 +283,8 @@ export function useBluetoothPrinter() {
         .text('Jln. Gatot Subroto no.10\n')
         .text('Depan Balai Desa Losari Kidul\n')
         .text('Losari, Cirebon 45192\n')
+        .text('WA: 0812-XXXX-XXXX\n')
+        .text('IG: @minangmaimbaoe\n')
         .text('--------------------------------\n');
 
       // Order info - compact format
