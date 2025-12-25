@@ -279,7 +279,9 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt - 58mm paper = 32 chars per line
+      // Build receipt - 58mm paper = 32 chars per line at default font
+      // Using smaller line width (30) to ensure fits on thermal paper
+      const LINE_WIDTH = 30;
       let printer = thermalPrinter.begin();
 
       // Get restaurant settings or use defaults
@@ -288,65 +290,91 @@ export function useBluetoothPrinter() {
       const addressLine1 = rs?.address_line1 || '';
       const addressLine2 = rs?.address_line2 || '';
       const addressLine3 = rs?.address_line3 || '';
-      const whatsappNumber = rs?.whatsapp_number;
-      const instagramHandle = rs?.instagram_handle;
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
 
-      // Helper to pad/truncate text for 32 char width
-      const line = '================================';
-      const padRight = (text: string, len: number) => text.slice(0, len).padEnd(len);
-      const padLeft = (text: string, len: number) => text.slice(0, len).padStart(len);
+      // Helper functions for text formatting
+      const line = '------------------------------';
+      const doubleLine = '==============================';
       
-      // Header
-      printer = printer.align('center').bold().text(`${restaurantName}\n`).clearFormatting().align('center');
+      // Center text within line width
+      const centerText = (text: string) => {
+        const trimmed = text.slice(0, LINE_WIDTH);
+        const padding = Math.floor((LINE_WIDTH - trimmed.length) / 2);
+        return ' '.repeat(padding) + trimmed;
+      };
+      
+      // Create two-column line: left text + right text
+      const twoColumn = (left: string, right: string) => {
+        const rightLen = right.length;
+        const leftMax = LINE_WIDTH - rightLen - 1;
+        const leftTrimmed = left.slice(0, leftMax);
+        const spaces = LINE_WIDTH - leftTrimmed.length - rightLen;
+        return leftTrimmed + ' '.repeat(Math.max(1, spaces)) + right;
+      };
+      
+      // Header - centered
+      printer = printer.align('center')
+        .bold()
+        .text(`${restaurantName}\n`)
+        .clearFormatting()
+        .align('center');
+      
       if (addressLine1) printer = printer.text(`${addressLine1}\n`);
       if (addressLine2) printer = printer.text(`${addressLine2}\n`);
       if (addressLine3) printer = printer.text(`${addressLine3}\n`);
-      if (whatsappNumber) printer = printer.text(`WA: ${whatsappNumber}\n`);
-      if (instagramHandle) printer = printer.text(`IG: ${instagramHandle}\n`);
-      printer = printer.text(`${line}\n`);
+      
+      printer = printer.text(`${doubleLine}\n`);
 
-      // Order info
+      // Order info - left aligned
       printer = printer.align('left')
         .text(`No: ${receiptData.orderNumber}\n`)
         .text(`Kasir: ${receiptData.cashierName}\n`);
+      
       if (receiptData.tableNumber) {
         printer = printer.text(`Meja: ${receiptData.tableNumber}\n`);
       }
-      printer = printer.text(`${dateStr} ${timeStr}\n`).text(`${line}\n`);
+      
+      printer = printer.text(`${dateStr} ${timeStr}\n`)
+        .text(`${line}\n`);
 
-      // Items - format: name + qty on left, price on right
+      // Items - two column format
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
         const priceStr = formatPrice(itemTotal);
-        const maxNameLen = 32 - priceStr.length - 4; // 4 = "Nx " + space
-        const itemName = item.name.length > maxNameLen ? item.name.slice(0, maxNameLen) : item.name;
-        const leftPart = `${item.quantity}x ${itemName}`;
-        const fullLine = padRight(leftPart, 32 - priceStr.length) + priceStr;
-        printer = printer.align('left').text(`${fullLine}\n`);
+        const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
+        printer = printer.text(`${itemLine}\n`);
       }
 
       printer = printer.text(`${line}\n`);
 
-      // Totals
+      // Totals section
       if (receiptData.discount > 0) {
-        const subLine = padRight('Subtotal', 20) + padLeft(`Rp${formatPrice(receiptData.subtotal)}`, 12);
-        const discLine = padRight('Diskon', 20) + padLeft(`-Rp${formatPrice(receiptData.discount)}`, 12);
-        printer = printer.text(`${subLine}\n`).text(`${discLine}\n`);
+        printer = printer
+          .text(`${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`)
+          .text(`${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`);
       }
       
-      const totalLine = padRight('TOTAL', 20) + padLeft(`Rp${formatPrice(receiptData.total)}`, 12);
-      printer = printer.bold().text(`${totalLine}\n`).clearFormatting().text(`${line}\n`);
+      // Total line - bold
+      printer = printer
+        .bold()
+        .text(`${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`)
+        .clearFormatting()
+        .text(`${line}\n`);
 
-      const payLine = padRight(paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod, 20) + padLeft(`Rp${formatPrice(receiptData.amountPaid)}`, 12);
-      printer = printer.text(`${payLine}\n`);
+      // Payment info
+      const payMethod = paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod;
+      printer = printer.text(`${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`);
       
       if (receiptData.change > 0) {
-        const changeLine = padRight('Kembali', 20) + padLeft(`Rp${formatPrice(receiptData.change)}`, 12);
-        printer = printer.text(`${changeLine}\n`);
+        printer = printer.text(`${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`);
       }
       
-      printer = printer.text(`${line}\n`).align('center').text(`${footerMessage}\n`).text('\n\n');
+      // Footer
+      printer = printer
+        .text(`${doubleLine}\n`)
+        .align('center')
+        .text(`${footerMessage}\n`)
+        .text('\n\n');
 
       // Print and cut paper
       await printer.cutPaper().write();
