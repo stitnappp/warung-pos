@@ -37,6 +37,22 @@ const getPrinterFontSize = (): PrinterFontSize => {
   return 'normal';
 };
 
+const applyFontSize = (printer: any, size: PrinterFontSize) => {
+  // Note: this maps "ukuran font" to capabilities the plugin supports.
+  // Some printers may ignore certain modes; this is still safe to call.
+  if (!printer) return printer;
+
+  if (size === 'small') {
+    return printer.font('B').doubleWidth(false).doubleHeight(false);
+  }
+
+  if (size === 'large') {
+    return printer.font('A').doubleWidth(true).doubleHeight(true);
+  }
+
+  return printer.font('A').doubleWidth(false).doubleHeight(false);
+};
+
 export function useBluetoothPrinter() {
   const [status, setStatus] = useState<PrinterStatus>({
     isConnected: false,
@@ -222,40 +238,26 @@ export function useBluetoothPrinter() {
       const timeStr = new Date().toLocaleTimeString('id-ID');
       const lineStr = '-'.repeat(lineWidth);
 
-      // Use ESC/POS commands directly
-      let receipt = '';
-      
-      // Initialize printer
-      receipt += '\x1B\x40'; // ESC @ - Initialize printer
-      
-      // Center align
-      receipt += '\x1B\x61\x01'; // ESC a 1 - Center align
-      
-      // Bold on
-      receipt += '\x1B\x45\x01'; // ESC E 1 - Bold on
-      receipt += 'TEST PRINT\n';
-      
-      // Bold off
-      receipt += '\x1B\x45\x00'; // ESC E 0 - Bold off
-      receipt += `${lineStr}\n`;
-      receipt += 'Printer Terhubung!\n';
-      receipt += `Font: ${fontSize} (${lineWidth} chars)\n`;
-      receipt += `${dateStr} ${timeStr}\n`;
-      receipt += `${lineStr}\n`;
-      
-      // Small text for restaurant name
-      receipt += '\x1B\x4D\x01'; // ESC M 1 - Select character font B (smaller)
-      receipt += '\x1B\x45\x01'; // Bold on
-      receipt += 'RM.MINANG MAIMBAOE\n';
-      receipt += '\x1B\x45\x00'; // Bold off
-      receipt += '\x1B\x4D\x00'; // ESC M 0 - Select character font A (normal)
-      
-      receipt += '\n\n';
-      
-      // Cut paper
-      receipt += '\x1D\x56\x00'; // GS V 0 - Full cut
-      
-      await thermalPrinter.print({ text: receipt });
+      // Use plugin's builder API (Android implementation) then write()
+      let printer = thermalPrinter.begin().clearFormatting();
+      printer = applyFontSize(printer, fontSize);
+
+      const receiptText =
+        `TEST PRINT\n` +
+        `${lineStr}\n` +
+        `Printer Terhubung!\n` +
+        `Font: ${fontSize} (${lineWidth} chars)\n` +
+        `${dateStr} ${timeStr}\n` +
+        `${lineStr}\n` +
+        `RM.MINANG MAIMBAOE\n\n\n`;
+
+      await printer
+        .align('center')
+        .bold()
+        .text(receiptText)
+        .bold(false)
+        .feedCutPaper()
+        .write();
 
       setStatus(prev => ({ ...prev, isPrinting: false }));
       return true;
@@ -344,78 +346,62 @@ export function useBluetoothPrinter() {
         return leftTrimmed + ' '.repeat(Math.max(1, spaces)) + right;
       };
       
-      // Build receipt using ESC/POS commands
-      let receipt = '';
-      
-      // Initialize printer
-      receipt += '\x1B\x40'; // ESC @ - Initialize printer
-      
-      // Header - centered, restaurant name with small font
-      receipt += '\x1B\x61\x01'; // ESC a 1 - Center align
-      receipt += '\x1B\x4D\x01'; // ESC M 1 - Select character font B (smaller)
-      receipt += '\x1B\x45\x01'; // ESC E 1 - Bold on
-      receipt += `${restaurantName}\n`;
-      receipt += '\x1B\x45\x00'; // ESC E 0 - Bold off
-      receipt += '\x1B\x4D\x00'; // ESC M 0 - Select character font A (normal)
-      
-      if (addressLine1) receipt += `${addressLine1}\n`;
-      if (addressLine2) receipt += `${addressLine2}\n`;
-      if (addressLine3) receipt += `${addressLine3}\n`;
-      
-      receipt += `${doubleLine}\n`;
+      // Print using plugin builder API (implemented on Android)
+      let printer = thermalPrinter.begin().clearFormatting();
+      printer = applyFontSize(printer, fontSize);
 
-      // Order info - left aligned
-      receipt += '\x1B\x61\x00'; // ESC a 0 - Left align
-      receipt += `No: ${receiptData.orderNumber}\n`;
-      receipt += `Kasir: ${receiptData.cashierName}\n`;
-      
+      // Header + address (center)
+      printer = printer.align('center').bold();
+      printer = printer.text(`${restaurantName}\n`).bold(false);
+      if (addressLine1) printer = printer.text(`${addressLine1}\n`);
+      if (addressLine2) printer = printer.text(`${addressLine2}\n`);
+      if (addressLine3) printer = printer.text(`${addressLine3}\n`);
+      printer = printer.text(`${doubleLine}\n`);
+
+      // Order info (left)
+      printer = printer.align('left');
+      printer = printer.text(`No: ${receiptData.orderNumber}\n`);
+      printer = printer.text(`Kasir: ${receiptData.cashierName}\n`);
       if (receiptData.tableNumber) {
-        receipt += `Meja: ${receiptData.tableNumber}\n`;
+        printer = printer.text(`Meja: ${receiptData.tableNumber}\n`);
       }
-      
-      receipt += `${dateStr} ${timeStr}\n`;
-      receipt += `${line}\n`;
+      printer = printer.text(`${dateStr} ${timeStr}\n`);
+      printer = printer.text(`${line}\n`);
 
-      // Items - two column format (qty x name | price)
+      // Items
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
         const priceStr = formatPrice(itemTotal);
         const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
-        receipt += `${itemLine}\n`;
+        printer = printer.text(`${itemLine}\n`);
       }
 
-      receipt += `${line}\n`;
+      printer = printer.text(`${line}\n`);
 
-      // Totals section
+      // Totals
       if (receiptData.discount > 0) {
-        receipt += `${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`;
-        receipt += `${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`;
+        printer = printer.text(`${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`);
+        printer = printer.text(`${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`);
       }
-      
-      // Total line - bold
-      receipt += '\x1B\x45\x01'; // Bold on
-      receipt += `${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`;
-      receipt += '\x1B\x45\x00'; // Bold off
-      receipt += `${line}\n`;
 
-      // Payment info
+      printer = printer.bold();
+      printer = printer.text(`${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`);
+      printer = printer.bold(false);
+      printer = printer.text(`${line}\n`);
+
+      // Payment
       const payMethod = paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod;
-      receipt += `${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`;
-      
+      printer = printer.text(`${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`);
       if (receiptData.change > 0) {
-        receipt += `${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`;
+        printer = printer.text(`${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`);
       }
-      
-      // Footer
-      receipt += `${doubleLine}\n`;
-      receipt += '\x1B\x61\x01'; // Center align
-      receipt += `${footerMessage}\n`;
-      receipt += '\n\n';
 
-      // Cut paper
-      receipt += '\x1D\x56\x00'; // GS V 0 - Full cut
-      
-      await thermalPrinter.print({ text: receipt });
+      // Footer (center)
+      printer = printer.text(`${doubleLine}\n`);
+      printer = printer.align('center');
+      printer = printer.text(`${footerMessage}\n\n\n`);
+
+      await printer.feedCutPaper().write();
 
       setStatus(prev => ({ ...prev, isPrinting: false }));
       return true;
