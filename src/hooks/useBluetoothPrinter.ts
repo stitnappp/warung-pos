@@ -201,7 +201,7 @@ export function useBluetoothPrinter() {
 
       const dateStr = new Date().toLocaleDateString('id-ID');
       const timeStr = new Date().toLocaleTimeString('id-ID');
-      const line42 = '------------------------------------------';
+      const line32 = '--------------------------------';
 
       // Use normal text size for better aesthetics
       await thermalPrinter.begin()
@@ -209,11 +209,14 @@ export function useBluetoothPrinter() {
         .bold()
         .text('TEST PRINT\n')
         .clearFormatting()
-        .text(`${line42}\n`)
+        .text(`${line32}\n`)
         .text('Printer Terhubung!\n')
         .text(`${dateStr} ${timeStr}\n`)
-        .text(`${line42}\n`)
+        .text(`${line32}\n`)
+        .textSizeRatio(0)
+        .bold()
         .text('RM.MINANG MAIMBAOE\n')
+        .clearFormatting()
         .text('\n\n')
         .cutPaper()
         .write();
@@ -280,8 +283,8 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt - 58mm paper RPP02N = 42 chars per line (ASCII 9x24)
-      const LINE_WIDTH = 42;
+      // Build receipt - 58mm paper RPP02N = 32 chars per line (ASCII 12x24)
+      const LINE_WIDTH = 32;
       let printer = thermalPrinter.begin();
 
       // Get restaurant settings or use defaults
@@ -292,9 +295,9 @@ export function useBluetoothPrinter() {
       const addressLine3 = rs?.address_line3 || '';
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
 
-      // Helper functions for text formatting - exactly 42 chars
-      const line = '------------------------------------------';
-      const doubleLine = '==========================================';
+      // Helper functions for text formatting - exactly 32 chars
+      const line = '--------------------------------';
+      const doubleLine = '================================';
       
       // Center text within line width
       const centerText = (text: string) => {
@@ -312,11 +315,13 @@ export function useBluetoothPrinter() {
         return leftTrimmed + ' '.repeat(Math.max(1, spaces)) + right;
       };
       
-      // Header - centered
+      // Header - centered, restaurant name with small font
       printer = printer.align('center')
+        .textSizeRatio(0)
         .bold()
         .text(`${restaurantName}\n`)
         .clearFormatting()
+        .textSizeRatio(1)
         .align('center');
       
       if (addressLine1) printer = printer.text(`${addressLine1}\n`);
@@ -337,19 +342,12 @@ export function useBluetoothPrinter() {
       printer = printer.text(`${dateStr} ${timeStr}\n`)
         .text(`${line}\n`);
 
-      // Items - item name on first line, qty x price on second line (right aligned)
+      // Items - two column format (qty x name | price)
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
-        const priceStr = `Rp${formatPrice(itemTotal)}`;
-        const qtyPrice = `${item.quantity} x ${formatPrice(item.price)} = ${priceStr}`;
-        
-        // Item name (truncate if too long)
-        const itemName = item.name.slice(0, LINE_WIDTH);
-        printer = printer.text(`${itemName}\n`);
-        
-        // Qty x price line - right aligned
-        const padding = LINE_WIDTH - qtyPrice.length;
-        printer = printer.text(`${' '.repeat(Math.max(0, padding))}${qtyPrice}\n`);
+        const priceStr = formatPrice(itemTotal);
+        const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
+        printer = printer.text(`${itemLine}\n`);
       }
 
       printer = printer.text(`${line}\n`);
