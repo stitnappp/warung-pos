@@ -47,7 +47,7 @@ export function generateReceiptHTML(data: ReceiptData): string {
       <style>
         @page {
           margin: 0;
-          size: 80mm auto;
+          size: 58mm auto;
         }
         * {
           margin: 0;
@@ -56,81 +56,84 @@ export function generateReceiptHTML(data: ReceiptData): string {
         }
         body {
           font-family: 'Courier New', monospace;
-          font-size: 12px;
-          width: 80mm;
-          padding: 5mm;
+          font-size: 7px;
+          width: 58mm;
+          padding: 2mm;
           color: #000;
           background: #fff;
+          line-height: 1.2;
         }
         .header {
           text-align: center;
-          margin-bottom: 10px;
+          margin-bottom: 4px;
           border-bottom: 1px dashed #000;
-          padding-bottom: 10px;
+          padding-bottom: 4px;
         }
         .header h1 {
-          font-size: 18px;
+          font-size: 9px;
           font-weight: bold;
-          margin-bottom: 5px;
+          margin-bottom: 2px;
         }
         .header p {
-          font-size: 11px;
+          font-size: 6px;
+          line-height: 1.1;
         }
         .info {
-          margin: 10px 0;
-          font-size: 11px;
+          margin: 4px 0;
+          font-size: 6px;
         }
         .info p {
-          margin: 2px 0;
+          margin: 1px 0;
         }
         table {
           width: 100%;
           border-collapse: collapse;
-          margin: 10px 0;
+          margin: 4px 0;
         }
         td {
-          padding: 3px 0;
-          font-size: 11px;
+          padding: 1px 0;
+          font-size: 6px;
+          vertical-align: top;
         }
         .divider {
           border-top: 1px dashed #000;
-          margin: 10px 0;
+          margin: 4px 0;
         }
         .totals {
-          margin: 10px 0;
+          margin: 4px 0;
         }
         .totals p {
           display: flex;
           justify-content: space-between;
-          margin: 3px 0;
-          font-size: 11px;
+          margin: 1px 0;
+          font-size: 6px;
         }
         .totals .total {
           font-weight: bold;
-          font-size: 14px;
-          margin-top: 5px;
+          font-size: 8px;
+          margin-top: 2px;
         }
         .footer {
           text-align: center;
-          margin-top: 15px;
-          font-size: 10px;
+          margin-top: 6px;
+          font-size: 6px;
         }
         .print-btn {
           display: block;
           width: 100%;
-          padding: 15px;
-          margin-top: 20px;
+          padding: 10px;
+          margin-top: 15px;
           background: #4CAF50;
           color: white;
           border: none;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: bold;
           cursor: pointer;
           border-radius: 8px;
         }
         @media print {
           body {
-            width: 80mm;
+            width: 58mm;
           }
           .print-btn {
             display: none;
