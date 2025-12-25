@@ -201,6 +201,7 @@ export function useBluetoothPrinter() {
 
       const dateStr = new Date().toLocaleDateString('id-ID');
       const timeStr = new Date().toLocaleTimeString('id-ID');
+      const line42 = '------------------------------------------';
 
       // Use normal text size for better aesthetics
       await thermalPrinter.begin()
@@ -208,10 +209,10 @@ export function useBluetoothPrinter() {
         .bold()
         .text('TEST PRINT\n')
         .clearFormatting()
-        .text('--------------------------------\n')
+        .text(`${line42}\n`)
         .text('Printer Terhubung!\n')
         .text(`${dateStr} ${timeStr}\n`)
-        .text('--------------------------------\n')
+        .text(`${line42}\n`)
         .text('RM.MINANG MAIMBAOE\n')
         .text('\n\n')
         .cutPaper()
@@ -336,12 +337,19 @@ export function useBluetoothPrinter() {
       printer = printer.text(`${dateStr} ${timeStr}\n`)
         .text(`${line}\n`);
 
-      // Items - two column format
+      // Items - item name on first line, qty x price on second line (right aligned)
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
-        const priceStr = formatPrice(itemTotal);
-        const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
-        printer = printer.text(`${itemLine}\n`);
+        const priceStr = `Rp${formatPrice(itemTotal)}`;
+        const qtyPrice = `${item.quantity} x ${formatPrice(item.price)} = ${priceStr}`;
+        
+        // Item name (truncate if too long)
+        const itemName = item.name.slice(0, LINE_WIDTH);
+        printer = printer.text(`${itemName}\n`);
+        
+        // Qty x price line - right aligned
+        const padding = LINE_WIDTH - qtyPrice.length;
+        printer = printer.text(`${' '.repeat(Math.max(0, padding))}${qtyPrice}\n`);
       }
 
       printer = printer.text(`${line}\n`);
