@@ -37,9 +37,15 @@ const getPrinterFontSize = (): PrinterFontSize => {
   return 'normal';
 };
 
+const sanitizeReceiptText = (text: string) => {
+  // Thermal printers are sensitive to charset/encoding; keep output strictly ASCII-ish
+  // to prevent garbled characters (e.g., Mandarin glyphs) on some devices.
+  return text
+    .normalize('NFKD')
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+};
+
 const applyFontSize = (printer: any, size: PrinterFontSize) => {
-  // Note: this maps "ukuran font" to capabilities the plugin supports.
-  // Some printers may ignore certain modes; this is still safe to call.
   if (!printer) return printer;
 
   if (size === 'small') {
@@ -239,11 +245,10 @@ export function useBluetoothPrinter() {
       const lineStr = '-'.repeat(lineWidth);
 
       // Use plugin's builder API (Android implementation) then write()
-      // Set encoding to PC437 (Latin) to prevent Chinese characters
-      let printer = thermalPrinter.begin().clearFormatting().charsetEncoding('PC437');
+      let printer = thermalPrinter.begin().clearFormatting();
       printer = applyFontSize(printer, fontSize);
 
-      const receiptText =
+      const receiptTextRaw =
         `TEST PRINT\n` +
         `${lineStr}\n` +
         `Printer Terhubung!\n` +
@@ -252,10 +257,12 @@ export function useBluetoothPrinter() {
         `${lineStr}\n` +
         `RM.MINANG MAIMBAOE\n\n\n`;
 
+      const receiptText = sanitizeReceiptText(receiptTextRaw);
+
       await printer
         .align('center')
         .bold()
-        .textCustom(receiptText, { encoding: 'ASCII' })
+        .text(receiptText)
         .bold(false)
         .feedCutPaper()
         .write();
@@ -348,62 +355,63 @@ export function useBluetoothPrinter() {
       };
       
       // Print using plugin builder API (implemented on Android)
-      // Set encoding to PC437 (Latin) to prevent Chinese characters
-      let printer = thermalPrinter.begin().clearFormatting().charsetEncoding('PC437');
+      let printer = thermalPrinter.begin().clearFormatting();
       printer = applyFontSize(printer, fontSize);
 
-      // Build receipt text as single string to use textCustom with ASCII encoding
-      let receiptText = '';
-      
+      // Build receipt text
+      let receiptTextRaw = '';
+
       // Header + address (center aligned)
-      receiptText += `${restaurantName}\n`;
-      if (addressLine1) receiptText += `${addressLine1}\n`;
-      if (addressLine2) receiptText += `${addressLine2}\n`;
-      if (addressLine3) receiptText += `${addressLine3}\n`;
-      receiptText += `${doubleLine}\n`;
+      receiptTextRaw += `${restaurantName}\n`;
+      if (addressLine1) receiptTextRaw += `${addressLine1}\n`;
+      if (addressLine2) receiptTextRaw += `${addressLine2}\n`;
+      if (addressLine3) receiptTextRaw += `${addressLine3}\n`;
+      receiptTextRaw += `${doubleLine}\n`;
 
       // Order info
-      receiptText += `No: ${receiptData.orderNumber}\n`;
-      receiptText += `Kasir: ${receiptData.cashierName}\n`;
+      receiptTextRaw += `No: ${receiptData.orderNumber}\n`;
+      receiptTextRaw += `Kasir: ${receiptData.cashierName}\n`;
       if (receiptData.tableNumber) {
-        receiptText += `Meja: ${receiptData.tableNumber}\n`;
+        receiptTextRaw += `Meja: ${receiptData.tableNumber}\n`;
       }
-      receiptText += `${dateStr} ${timeStr}\n`;
-      receiptText += `${line}\n`;
+      receiptTextRaw += `${dateStr} ${timeStr}\n`;
+      receiptTextRaw += `${line}\n`;
 
       // Items
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
         const priceStr = formatPrice(itemTotal);
         const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
-        receiptText += `${itemLine}\n`;
+        receiptTextRaw += `${itemLine}\n`;
       }
 
-      receiptText += `${line}\n`;
+      receiptTextRaw += `${line}\n`;
 
       // Totals
       if (receiptData.discount > 0) {
-        receiptText += `${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`;
-        receiptText += `${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`;
+        receiptTextRaw += `${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`;
+        receiptTextRaw += `${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`;
       }
 
-      receiptText += `${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`;
-      receiptText += `${line}\n`;
+      receiptTextRaw += `${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`;
+      receiptTextRaw += `${line}\n`;
 
       // Payment
       const payMethod = paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod;
-      receiptText += `${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`;
+      receiptTextRaw += `${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`;
       if (receiptData.change > 0) {
-        receiptText += `${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`;
+        receiptTextRaw += `${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`;
       }
 
       // Footer
-      receiptText += `${doubleLine}\n`;
-      receiptText += `${footerMessage}\n\n\n`;
+      receiptTextRaw += `${doubleLine}\n`;
+      receiptTextRaw += `${footerMessage}\n\n\n`;
+
+      const receiptText = sanitizeReceiptText(receiptTextRaw);
 
       await printer
         .align('center')
-        .textCustom(receiptText, { encoding: 'ASCII' })
+        .text(receiptText)
         .feedCutPaper()
         .write();
 
