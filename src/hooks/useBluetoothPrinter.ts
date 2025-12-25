@@ -279,9 +279,8 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt - 58mm paper = 32 chars per line at default font
-      // Using smaller line width (30) to ensure fits on thermal paper
-      const LINE_WIDTH = 30;
+      // Build receipt - 58mm paper RPP02N = 32 chars per line (ASCII 12x24)
+      const LINE_WIDTH = 32;
       let printer = thermalPrinter.begin();
 
       // Get restaurant settings or use defaults
@@ -292,9 +291,9 @@ export function useBluetoothPrinter() {
       const addressLine3 = rs?.address_line3 || '';
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
 
-      // Helper functions for text formatting
-      const line = '------------------------------';
-      const doubleLine = '==============================';
+      // Helper functions for text formatting - exactly 32 chars
+      const line = '--------------------------------';
+      const doubleLine = '================================';
       
       // Center text within line width
       const centerText = (text: string) => {
