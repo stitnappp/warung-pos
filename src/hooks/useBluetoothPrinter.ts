@@ -239,7 +239,8 @@ export function useBluetoothPrinter() {
       const lineStr = '-'.repeat(lineWidth);
 
       // Use plugin's builder API (Android implementation) then write()
-      let printer = thermalPrinter.begin().clearFormatting();
+      // Set encoding to PC437 (Latin) to prevent Chinese characters
+      let printer = thermalPrinter.begin().clearFormatting().charsetEncoding('PC437');
       printer = applyFontSize(printer, fontSize);
 
       const receiptText =
@@ -254,7 +255,7 @@ export function useBluetoothPrinter() {
       await printer
         .align('center')
         .bold()
-        .text(receiptText)
+        .textCustom(receiptText, { encoding: 'ASCII' })
         .bold(false)
         .feedCutPaper()
         .write();
@@ -347,61 +348,64 @@ export function useBluetoothPrinter() {
       };
       
       // Print using plugin builder API (implemented on Android)
-      let printer = thermalPrinter.begin().clearFormatting();
+      // Set encoding to PC437 (Latin) to prevent Chinese characters
+      let printer = thermalPrinter.begin().clearFormatting().charsetEncoding('PC437');
       printer = applyFontSize(printer, fontSize);
 
-      // Header + address (center)
-      printer = printer.align('center').bold();
-      printer = printer.text(`${restaurantName}\n`).bold(false);
-      if (addressLine1) printer = printer.text(`${addressLine1}\n`);
-      if (addressLine2) printer = printer.text(`${addressLine2}\n`);
-      if (addressLine3) printer = printer.text(`${addressLine3}\n`);
-      printer = printer.text(`${doubleLine}\n`);
+      // Build receipt text as single string to use textCustom with ASCII encoding
+      let receiptText = '';
+      
+      // Header + address (center aligned)
+      receiptText += `${restaurantName}\n`;
+      if (addressLine1) receiptText += `${addressLine1}\n`;
+      if (addressLine2) receiptText += `${addressLine2}\n`;
+      if (addressLine3) receiptText += `${addressLine3}\n`;
+      receiptText += `${doubleLine}\n`;
 
-      // Order info (left)
-      printer = printer.align('left');
-      printer = printer.text(`No: ${receiptData.orderNumber}\n`);
-      printer = printer.text(`Kasir: ${receiptData.cashierName}\n`);
+      // Order info
+      receiptText += `No: ${receiptData.orderNumber}\n`;
+      receiptText += `Kasir: ${receiptData.cashierName}\n`;
       if (receiptData.tableNumber) {
-        printer = printer.text(`Meja: ${receiptData.tableNumber}\n`);
+        receiptText += `Meja: ${receiptData.tableNumber}\n`;
       }
-      printer = printer.text(`${dateStr} ${timeStr}\n`);
-      printer = printer.text(`${line}\n`);
+      receiptText += `${dateStr} ${timeStr}\n`;
+      receiptText += `${line}\n`;
 
       // Items
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
         const priceStr = formatPrice(itemTotal);
         const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
-        printer = printer.text(`${itemLine}\n`);
+        receiptText += `${itemLine}\n`;
       }
 
-      printer = printer.text(`${line}\n`);
+      receiptText += `${line}\n`;
 
       // Totals
       if (receiptData.discount > 0) {
-        printer = printer.text(`${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`);
-        printer = printer.text(`${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`);
+        receiptText += `${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`;
+        receiptText += `${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`;
       }
 
-      printer = printer.bold();
-      printer = printer.text(`${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`);
-      printer = printer.bold(false);
-      printer = printer.text(`${line}\n`);
+      receiptText += `${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`;
+      receiptText += `${line}\n`;
 
       // Payment
       const payMethod = paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod;
-      printer = printer.text(`${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`);
+      receiptText += `${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`;
       if (receiptData.change > 0) {
-        printer = printer.text(`${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`);
+        receiptText += `${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`;
       }
 
-      // Footer (center)
-      printer = printer.text(`${doubleLine}\n`);
-      printer = printer.align('center');
-      printer = printer.text(`${footerMessage}\n\n\n`);
+      // Footer
+      receiptText += `${doubleLine}\n`;
+      receiptText += `${footerMessage}\n\n\n`;
 
-      await printer.feedCutPaper().write();
+      await printer
+        .align('center')
+        .textCustom(receiptText, { encoding: 'ASCII' })
+        .feedCutPaper()
+        .write();
 
       setStatus(prev => ({ ...prev, isPrinting: false }));
       return true;
