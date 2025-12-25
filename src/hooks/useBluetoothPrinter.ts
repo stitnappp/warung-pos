@@ -19,23 +19,9 @@ interface PrinterStatus {
 const isNative = Capacitor.isNativePlatform();
 
 const STORAGE_KEY = 'eppos_printer_device';
-const FONT_SIZE_STORAGE_KEY = 'eppos_printer_font_size';
 
-type PrinterFontSize = 'small' | 'normal' | 'large';
-
-const FONT_SIZE_CONFIG: Record<PrinterFontSize, { chars: number }> = {
-  small: { chars: 42 },
-  normal: { chars: 32 },
-  large: { chars: 24 },
-};
-
-const getPrinterFontSize = (): PrinterFontSize => {
-  const saved = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
-  if (saved && (saved === 'small' || saved === 'normal' || saved === 'large')) {
-    return saved;
-  }
-  return 'normal';
-};
+// Fixed line width for 58mm thermal paper
+const LINE_WIDTH = 32;
 
 const sanitizeReceiptText = (text: string) => {
   // Thermal printers are sensitive to charset/encoding; keep output strictly ASCII-ish
@@ -43,20 +29,6 @@ const sanitizeReceiptText = (text: string) => {
   return text
     .normalize('NFKD')
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
-};
-
-const applyFontSize = (printer: any, size: PrinterFontSize) => {
-  if (!printer) return printer;
-
-  if (size === 'small') {
-    return printer.font('B').doubleWidth(false).doubleHeight(false);
-  }
-
-  if (size === 'large') {
-    return printer.font('A').doubleWidth(true).doubleHeight(true);
-  }
-
-  return printer.font('A').doubleWidth(false).doubleHeight(false);
 };
 
 export function useBluetoothPrinter() {
@@ -238,21 +210,17 @@ export function useBluetoothPrinter() {
     try {
       setStatus(prev => ({ ...prev, isPrinting: true, error: null }));
 
-      const fontSize = getPrinterFontSize();
-      const lineWidth = FONT_SIZE_CONFIG[fontSize].chars;
       const dateStr = new Date().toLocaleDateString('id-ID');
       const timeStr = new Date().toLocaleTimeString('id-ID');
-      const lineStr = '-'.repeat(lineWidth);
+      const lineStr = '-'.repeat(LINE_WIDTH);
 
       // Use plugin's builder API (Android implementation) then write()
-      let printer = thermalPrinter.begin().clearFormatting();
-      printer = applyFontSize(printer, fontSize);
+      const printer = thermalPrinter.begin().clearFormatting();
 
       const receiptTextRaw =
         `TEST PRINT\n` +
         `${lineStr}\n` +
         `Printer Terhubung!\n` +
-        `Font: ${fontSize} (${lineWidth} chars)\n` +
         `${dateStr} ${timeStr}\n` +
         `${lineStr}\n` +
         `RM.MINANG MAIMBAOE\n\n\n`;
@@ -329,10 +297,6 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Get font size from settings
-      const fontSize = getPrinterFontSize();
-      const LINE_WIDTH = FONT_SIZE_CONFIG[fontSize].chars;
-
       // Get restaurant settings or use defaults
       const rs = receiptData.restaurantSettings;
       const restaurantName = rs?.restaurant_name || 'RM.MINANG MAIMBAOE';
@@ -378,8 +342,7 @@ export function useBluetoothPrinter() {
       };
       
       // Print using plugin builder API (implemented on Android)
-      let printer = thermalPrinter.begin().clearFormatting();
-      printer = applyFontSize(printer, fontSize);
+      const printer = thermalPrinter.begin().clearFormatting();
 
       // Build receipt text
       let receiptTextRaw = '';

@@ -1,33 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useBluetoothPrinter, BluetoothDevice } from '@/hooks/useBluetoothPrinter';
-import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw, TestTube, Link, Type } from 'lucide-react';
+import { Bluetooth, BluetoothSearching, Printer, CheckCircle, XCircle, Loader2, RefreshCw, TestTube, Link } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface BluetoothPrinterSettingsProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-export type PrinterFontSize = 'small' | 'normal' | 'large';
-
-const FONT_SIZE_STORAGE_KEY = 'eppos_printer_font_size';
-
-export const FONT_SIZE_CONFIG: Record<PrinterFontSize, { label: string; chars: number; description: string }> = {
-  small: { label: 'Kecil (9x24)', chars: 42, description: '42 karakter per baris' },
-  normal: { label: 'Normal (12x24)', chars: 32, description: '32 karakter per baris' },
-  large: { label: 'Besar (16x24)', chars: 24, description: '24 karakter per baris' },
-};
-
-export function getPrinterFontSize(): PrinterFontSize {
-  const saved = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
-  if (saved && (saved === 'small' || saved === 'normal' || saved === 'large')) {
-    return saved;
-  }
-  return 'normal';
 }
 
 export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSettingsProps) {
@@ -49,18 +29,6 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
   const [isTesting, setIsTesting] = useState(false);
   const [manualAddress, setManualAddress] = useState('');
   const [showManualConnect, setShowManualConnect] = useState(false);
-  const [fontSize, setFontSize] = useState<PrinterFontSize>('normal');
-
-  // Load font size from storage on mount
-  useEffect(() => {
-    setFontSize(getPrinterFontSize());
-  }, []);
-
-  const handleFontSizeChange = (value: PrinterFontSize) => {
-    setFontSize(value);
-    localStorage.setItem(FONT_SIZE_STORAGE_KEY, value);
-    toast.success(`Ukuran font diubah ke ${FONT_SIZE_CONFIG[value].label}`);
-  };
 
   const handleScan = async () => {
     await scanDevices();
@@ -175,28 +143,6 @@ export function BluetoothPrinterSettings({ isOpen, onClose }: BluetoothPrinterSe
                 )}
               </div>
 
-              {/* Font Size Setting */}
-              <div className="p-4 bg-muted/50 rounded-xl space-y-3">
-                <div className="flex items-center gap-2">
-                  <Type className="w-4 h-4 text-muted-foreground" />
-                  <Label className="font-medium">Ukuran Font Struk</Label>
-                </div>
-                <Select value={fontSize} onValueChange={(v) => handleFontSizeChange(v as PrinterFontSize)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(FONT_SIZE_CONFIG).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex flex-col">
-                          <span>{config.label}</span>
-                          <span className="text-xs text-muted-foreground">{config.description}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
 
               {/* Action Buttons when connected */}
               {isConnected && (
