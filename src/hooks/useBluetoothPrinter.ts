@@ -19,6 +19,23 @@ interface PrinterStatus {
 const isNative = Capacitor.isNativePlatform();
 
 const STORAGE_KEY = 'eppos_printer_device';
+const FONT_SIZE_STORAGE_KEY = 'eppos_printer_font_size';
+
+type PrinterFontSize = 'small' | 'normal' | 'large';
+
+const FONT_SIZE_CONFIG: Record<PrinterFontSize, { chars: number }> = {
+  small: { chars: 42 },
+  normal: { chars: 32 },
+  large: { chars: 24 },
+};
+
+const getPrinterFontSize = (): PrinterFontSize => {
+  const saved = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+  if (saved && (saved === 'small' || saved === 'normal' || saved === 'large')) {
+    return saved;
+  }
+  return 'normal';
+};
 
 export function useBluetoothPrinter() {
   const [status, setStatus] = useState<PrinterStatus>({
@@ -199,9 +216,11 @@ export function useBluetoothPrinter() {
     try {
       setStatus(prev => ({ ...prev, isPrinting: true, error: null }));
 
+      const fontSize = getPrinterFontSize();
+      const lineWidth = FONT_SIZE_CONFIG[fontSize].chars;
       const dateStr = new Date().toLocaleDateString('id-ID');
       const timeStr = new Date().toLocaleTimeString('id-ID');
-      const line32 = '--------------------------------';
+      const lineStr = '-'.repeat(lineWidth);
 
       // Use normal text size for better aesthetics
       await thermalPrinter.begin()
@@ -209,10 +228,11 @@ export function useBluetoothPrinter() {
         .bold()
         .text('TEST PRINT\n')
         .clearFormatting()
-        .text(`${line32}\n`)
+        .text(`${lineStr}\n`)
         .text('Printer Terhubung!\n')
+        .text(`Font: ${fontSize} (${lineWidth} chars)\n`)
         .text(`${dateStr} ${timeStr}\n`)
-        .text(`${line32}\n`)
+        .text(`${lineStr}\n`)
         .textSizeRatio(0)
         .bold()
         .text('RM.MINANG MAIMBAOE\n')
@@ -283,8 +303,9 @@ export function useBluetoothPrinter() {
       const dateStr = receiptData.timestamp.toLocaleDateString('id-ID');
       const timeStr = receiptData.timestamp.toLocaleTimeString('id-ID');
 
-      // Build receipt - 58mm paper RPP02N = 32 chars per line (ASCII 12x24)
-      const LINE_WIDTH = 32;
+      // Get font size from settings
+      const fontSize = getPrinterFontSize();
+      const LINE_WIDTH = FONT_SIZE_CONFIG[fontSize].chars;
       let printer = thermalPrinter.begin();
 
       // Get restaurant settings or use defaults
@@ -295,9 +316,9 @@ export function useBluetoothPrinter() {
       const addressLine3 = rs?.address_line3 || '';
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
 
-      // Helper functions for text formatting - exactly 32 chars
-      const line = '--------------------------------';
-      const doubleLine = '================================';
+      // Helper functions for text formatting based on LINE_WIDTH
+      const line = '-'.repeat(LINE_WIDTH);
+      const doubleLine = '='.repeat(LINE_WIDTH);
       
       // Center text within line width
       const centerText = (text: string) => {
