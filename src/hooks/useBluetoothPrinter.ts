@@ -342,16 +342,39 @@ export function useBluetoothPrinter() {
       const footerMessage = rs?.footer_message || 'Terima Kasih!';
 
       // Helper functions for text formatting based on LINE_WIDTH
-      const line = '-'.repeat(LINE_WIDTH);
-      const doubleLine = '='.repeat(LINE_WIDTH);
+      const dashedLine = '-'.repeat(LINE_WIDTH);
       
-      // Create two-column line: left text + right text
+      // Create two-column line: left label + right value
       const twoColumn = (left: string, right: string) => {
         const rightLen = right.length;
         const leftMax = LINE_WIDTH - rightLen - 1;
         const leftTrimmed = left.slice(0, leftMax);
         const spaces = LINE_WIDTH - leftTrimmed.length - rightLen;
         return leftTrimmed + ' '.repeat(Math.max(1, spaces)) + right;
+      };
+
+      // Create item line: Item | Qty | Harga (aligned columns)
+      const itemLine = (name: string, qty: number, price: string) => {
+        const qtyStr = String(qty);
+        const qtyWidth = 4;
+        const priceWidth = Math.max(10, price.length + 1);
+        const nameWidth = LINE_WIDTH - qtyWidth - priceWidth;
+        
+        const nameTrimmed = name.length > nameWidth ? name.slice(0, nameWidth - 1) : name;
+        const namePadded = nameTrimmed.padEnd(nameWidth, ' ');
+        const qtyPadded = qtyStr.padStart(qtyWidth - 1, ' ') + ' ';
+        const pricePadded = price.padStart(priceWidth, ' ');
+        
+        return namePadded + qtyPadded + pricePadded;
+      };
+
+      // Header row for items table
+      const itemHeader = () => {
+        const qtyWidth = 4;
+        const priceWidth = Math.max(10, 6);
+        const nameWidth = LINE_WIDTH - qtyWidth - priceWidth;
+        
+        return 'Item'.padEnd(nameWidth, ' ') + 'Qty'.padStart(qtyWidth, ' ') + 'Harga'.padStart(priceWidth, ' ');
       };
       
       // Print using plugin builder API (implemented on Android)
@@ -361,50 +384,56 @@ export function useBluetoothPrinter() {
       // Build receipt text
       let receiptTextRaw = '';
 
-      // Header + address (center aligned)
+      // Header - Restaurant name (bold, centered)
       receiptTextRaw += `${restaurantName}\n`;
+      
+      // Address lines (centered, smaller)
       if (addressLine1) receiptTextRaw += `${addressLine1}\n`;
       if (addressLine2) receiptTextRaw += `${addressLine2}\n`;
       if (addressLine3) receiptTextRaw += `${addressLine3}\n`;
-      receiptTextRaw += `${doubleLine}\n`;
+      
+      receiptTextRaw += `${dashedLine}\n`;
 
-      // Order info
-      receiptTextRaw += `No: ${receiptData.orderNumber}\n`;
-      receiptTextRaw += `Kasir: ${receiptData.cashierName}\n`;
+      // Order info section
+      receiptTextRaw += `${twoColumn('No. Order:', '#' + receiptData.orderNumber)}\n`;
+      receiptTextRaw += `${twoColumn('Tanggal:', `${dateStr} ${timeStr}`)}\n`;
+      receiptTextRaw += `${twoColumn('Pembayaran:', paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod)}\n`;
+      receiptTextRaw += `${twoColumn('Kasir:', receiptData.cashierName)}\n`;
       if (receiptData.tableNumber) {
-        receiptTextRaw += `Meja: ${receiptData.tableNumber}\n`;
+        receiptTextRaw += `${twoColumn('Meja:', String(receiptData.tableNumber))}\n`;
       }
-      receiptTextRaw += `${dateStr} ${timeStr}\n`;
-      receiptTextRaw += `${line}\n`;
+      
+      receiptTextRaw += `${dashedLine}\n`;
+
+      // Items table header
+      receiptTextRaw += `${itemHeader()}\n`;
 
       // Items
       for (const item of receiptData.items) {
         const itemTotal = item.price * item.quantity;
-        const priceStr = formatPrice(itemTotal);
-        const itemLine = twoColumn(`${item.quantity}x ${item.name}`, priceStr);
-        receiptTextRaw += `${itemLine}\n`;
+        const priceStr = 'Rp ' + formatPrice(itemTotal);
+        receiptTextRaw += `${itemLine(item.name, item.quantity, priceStr)}\n`;
       }
 
-      receiptTextRaw += `${line}\n`;
+      receiptTextRaw += `${dashedLine}\n`;
 
-      // Totals
+      // Totals section
       if (receiptData.discount > 0) {
-        receiptTextRaw += `${twoColumn('Subtotal', 'Rp' + formatPrice(receiptData.subtotal))}\n`;
-        receiptTextRaw += `${twoColumn('Diskon', '-Rp' + formatPrice(receiptData.discount))}\n`;
+        receiptTextRaw += `${twoColumn('Subtotal:', 'Rp ' + formatPrice(receiptData.subtotal))}\n`;
+        receiptTextRaw += `${twoColumn('Diskon:', '-Rp ' + formatPrice(receiptData.discount))}\n`;
       }
 
-      receiptTextRaw += `${twoColumn('TOTAL', 'Rp' + formatPrice(receiptData.total))}\n`;
-      receiptTextRaw += `${line}\n`;
-
-      // Payment
+      receiptTextRaw += `${twoColumn('TOTAL:', 'Rp ' + formatPrice(receiptData.total))}\n`;
+      
+      // Payment info
       const payMethod = paymentMethodText[receiptData.paymentMethod] || receiptData.paymentMethod;
-      receiptTextRaw += `${twoColumn(payMethod, 'Rp' + formatPrice(receiptData.amountPaid))}\n`;
+      receiptTextRaw += `${twoColumn(payMethod + ':', 'Rp ' + formatPrice(receiptData.amountPaid))}\n`;
       if (receiptData.change > 0) {
-        receiptTextRaw += `${twoColumn('Kembali', 'Rp' + formatPrice(receiptData.change))}\n`;
+        receiptTextRaw += `${twoColumn('Kembali:', 'Rp ' + formatPrice(receiptData.change))}\n`;
       }
 
       // Footer
-      receiptTextRaw += `${doubleLine}\n`;
+      receiptTextRaw += `${dashedLine}\n`;
       receiptTextRaw += `${footerMessage}\n\n\n`;
 
       const receiptText = sanitizeReceiptText(receiptTextRaw);
