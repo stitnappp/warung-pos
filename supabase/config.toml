@@ -17,3 +17,9 @@ verify_jwt = true
 
 [functions.doku-webhook]
 verify_jwt = false
+
+[functions.midtrans-qris]
+verify_jwt = true
+
+[functions.midtrans-status]
+verify_jwt = true

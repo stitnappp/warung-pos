@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { CartItem } from '@/hooks/useOrders';
 import { RestaurantTable } from '@/hooks/useTables';
-import { X, Banknote, CreditCard, QrCode, Printer, MapPin, ArrowLeft, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import { X, Banknote, CreditCard, QrCode, MapPin, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
 import { useBluetoothPrinter } from '@/hooks/useBluetoothPrinter';
 import { printReceipt as webPrintReceipt } from '@/utils/receiptPrinter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRestaurantSettings } from '@/hooks/useRestaurantSettings';
+import { QrisPaymentDialog } from './QrisPaymentDialog';
 
 interface CheckoutDialogProps {
   isOpen: boolean;
@@ -22,6 +21,12 @@ interface CheckoutDialogProps {
 }
 
 const quickCashOptions = [20000, 50000, 100000, 200000];
+
+const paymentMethods = [
+  { id: 'cash' as const, label: 'Tunai', icon: Banknote },
+  { id: 'qris' as const, label: 'QRIS', icon: QrCode },
+  { id: 'transfer' as const, label: 'Transfer', icon: CreditCard },
+];
 
 export function CheckoutDialog({
   isOpen,
@@ -44,20 +49,14 @@ export function CheckoutDialog({
   } | null>(null);
 
   // QRIS states
-  const [qrisData, setQrisData] = useState<{
-    qrCodeUrl: string | null;
-    qrString: string | null;
-    orderId: string | null;
-    expiryTime: string | null;
-  } | null>(null);
   const [showQrisPayment, setShowQrisPayment] = useState(false);
-  const [checkingPayment, setCheckingPayment] = useState(false);
-  const [qrisGenerating, setQrisGenerating] = useState(false);
+  const [tempOrderId, setTempOrderId] = useState('');
 
   // Bluetooth printer hook
   const bluetoothPrinter = useBluetoothPrinter();
   const { fullName } = useAuth();
   const { settings: restaurantSettings } = useRestaurantSettings();
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -67,141 +66,23 @@ export function CheckoutDialog({
   };
 
   const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
+  const isCashPayment = paymentMethod === 'cash';
+  const isQrisPayment = paymentMethod === 'qris';
+  const canConfirm = !isCashPayment || amountPaid >= total;
 
-  // Generate unique order ID for QRIS
-  const generateOrderId = () => {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return `QRIS-${timestamp}-${random}`;
-  };
-
-  // Create QRIS payment
-  const handleCreateQrisPayment = async () => {
-    setQrisGenerating(true);
-    try {
-      const orderId = generateOrderId();
-      const itemDetails = items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-      }));
-
-      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
-        body: {
-          order_id: orderId,
-          amount: total,
-          item_details: itemDetails,
-        },
-      });
-
-      if (error) {
-        console.error('Error creating QRIS payment:', error);
-        toast({
-          title: 'Error',
-          description: 'Gagal membuat pembayaran QRIS. Silakan coba lagi.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (data.error) {
-        console.error('QRIS payment error:', data.error);
-        toast({
-          title: 'Error',
-          description: data.error,
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setQrisData({
-        qrCodeUrl: data.qr_code_url,
-        qrString: data.qr_string,
-        orderId: data.order_id,
-        expiryTime: data.expiry_time,
-      });
-      setShowQrisPayment(true);
-    } catch (error) {
-      console.error('Error:', error);
-      toast({
-        title: 'Error',
-        description: 'Terjadi kesalahan. Silakan coba lagi.',
-        variant: 'destructive',
-      });
-    } finally {
-      setQrisGenerating(false);
-    }
-  };
-
-  // Check payment status
-  const checkPaymentStatus = async () => {
-    if (!qrisData?.orderId) return;
-
-    setCheckingPayment(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('check-payment-status', {
-        body: { order_id: qrisData.orderId },
-      });
-
-      if (error) {
-        console.error('Error checking payment status:', error);
-        toast({
-          title: 'Error',
-          description: 'Gagal memeriksa status pembayaran.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (data.status === 'success') {
-        // Payment successful!
-        toast({
-          title: 'Pembayaran Berhasil!',
-          description: 'Pembayaran QRIS telah diterima.',
-        });
-        setReceiptData({
-          paymentMethod: 'qris',
-          amountPaid: total,
-          change: 0,
-        });
-        setShowQrisPayment(false);
-        setShowReceipt(true);
-      } else if (data.status === 'pending') {
-        toast({
-          title: 'Menunggu Pembayaran',
-          description: 'Pembayaran masih dalam proses. Silakan scan QR code.',
-        });
-      } else if (data.status === 'failed') {
-        toast({
-          title: 'Pembayaran Gagal',
-          description: 'Pembayaran QRIS gagal atau expired.',
-          variant: 'destructive',
-        });
-        setShowQrisPayment(false);
-        setQrisData(null);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setCheckingPayment(false);
-    }
-  };
-
-  // Auto-check payment status every 5 seconds when QRIS is shown
+  // Reset received amount when dialog opens or total changes
   useEffect(() => {
-    if (!showQrisPayment || !qrisData?.orderId) return;
-
-    const interval = setInterval(() => {
-      checkPaymentStatus();
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [showQrisPayment, qrisData?.orderId]);
+    if (isOpen) {
+      setAmountPaid(total);
+      setShowQrisPayment(false);
+      // Generate a temporary order ID for QRIS
+      setTempOrderId(crypto.randomUUID());
+    }
+  }, [isOpen, total]);
 
   const handleComplete = async () => {
     if (paymentMethod === 'qris') {
-      handleCreateQrisPayment();
+      setShowQrisPayment(true);
       return;
     }
 
@@ -211,7 +92,7 @@ export function CheckoutDialog({
     
     const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
     const finalAmountPaid = paymentMethod === 'cash' ? amountPaid : total;
-    const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
+    const changeAmount = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
 
     // Build receipt data
     const receiptPrintData = {
@@ -224,7 +105,7 @@ export function CheckoutDialog({
       total: total,
       paymentMethod,
       amountPaid: finalAmountPaid,
-      change: change,
+      change: changeAmount,
       timestamp: new Date(),
       restaurantSettings: restaurantSettings ? {
         restaurant_name: restaurantSettings.restaurant_name,
@@ -257,7 +138,59 @@ export function CheckoutDialog({
     setReceiptData({
       paymentMethod,
       amountPaid: finalAmountPaid,
-      change: change,
+      change: changeAmount,
+    });
+    setShowReceipt(true);
+  };
+
+  const handleQrisPaymentSuccess = async () => {
+    setShowQrisPayment(false);
+    
+    const tableNum = selectedTable ? tables.find(t => t.id === selectedTable)?.table_number : undefined;
+
+    // Build receipt data
+    const receiptPrintData = {
+      orderNumber: `ORD-${Date.now()}`,
+      cashierName: fullName || 'Kasir',
+      tableNumber: tableNum,
+      items: items,
+      subtotal: total,
+      discount: 0,
+      total: total,
+      paymentMethod: 'qris' as const,
+      amountPaid: total,
+      change: 0,
+      timestamp: new Date(),
+      restaurantSettings: restaurantSettings ? {
+        restaurant_name: restaurantSettings.restaurant_name,
+        address_line1: restaurantSettings.address_line1,
+        address_line2: restaurantSettings.address_line2,
+        address_line3: restaurantSettings.address_line3,
+        whatsapp_number: restaurantSettings.whatsapp_number,
+        instagram_handle: restaurantSettings.instagram_handle,
+        footer_message: restaurantSettings.footer_message,
+      } : undefined,
+    };
+
+    // Print receipt
+    try {
+      if (bluetoothPrinter.isNative && bluetoothPrinter.isConnected) {
+        const btSuccess = await bluetoothPrinter.printReceipt(receiptPrintData);
+        if (!btSuccess) {
+          webPrintReceipt(receiptPrintData);
+        }
+      } else {
+        webPrintReceipt(receiptPrintData);
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      webPrintReceipt(receiptPrintData);
+    }
+
+    setReceiptData({
+      paymentMethod: 'qris',
+      amountPaid: total,
+      change: 0,
     });
     setShowReceipt(true);
   };
@@ -271,13 +204,7 @@ export function CheckoutDialog({
     setReceiptData(null);
     setAmountPaid(0);
     setPaymentMethod('cash');
-    setQrisData(null);
     setShowQrisPayment(false);
-  };
-
-  const handleCancelQris = () => {
-    setShowQrisPayment(false);
-    setQrisData(null);
   };
 
   const handleQuickCash = (amount: number) => {
@@ -293,90 +220,24 @@ export function CheckoutDialog({
     if (!showReceipt && !showQrisPayment) {
       setAmountPaid(0);
       setPaymentMethod('cash');
-      setQrisData(null);
       onClose();
     }
   };
 
   if (!isOpen) return null;
 
-  // QRIS Payment View
-  if (showQrisPayment && qrisData) {
+  // QRIS Payment Dialog
+  if (showQrisPayment) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
-        <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl border border-border shadow-2xl animate-scale-in">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card z-10">
-            <h2 className="text-xl font-bold">Pembayaran QRIS</h2>
-            <button
-              onClick={handleCancelQris}
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="p-6 space-y-6">
-            {/* QR Code */}
-            <div className="flex flex-col items-center gap-4">
-              <div className="bg-white p-4 rounded-xl shadow-lg">
-                {qrisData.qrCodeUrl ? (
-                  <img 
-                    src={qrisData.qrCodeUrl} 
-                    alt="QRIS QR Code" 
-                    className="w-64 h-64 object-contain"
-                  />
-                ) : (
-                  <div className="w-64 h-64 flex items-center justify-center bg-muted rounded-lg">
-                    <span className="text-muted-foreground text-sm">QR Code tidak tersedia</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center space-y-2">
-                <p className="text-2xl font-bold text-primary">{formatPrice(total)}</p>
-                <p className="text-sm text-muted-foreground">
-                  Scan QR code di atas menggunakan aplikasi e-wallet
-                </p>
-                {qrisData.expiryTime && (
-                  <p className="text-xs text-muted-foreground">
-                    Berlaku sampai: {new Date(qrisData.expiryTime).toLocaleTimeString('id-ID')}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Payment Status Indicator */}
-            <div className="flex items-center justify-center gap-2 p-4 bg-secondary/50 rounded-xl">
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              <span className="text-sm font-medium">Menunggu pembayaran...</span>
-            </div>
-
-            {/* Check Payment Button */}
-            <button
-              onClick={checkPaymentStatus}
-              disabled={checkingPayment}
-              className="w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50"
-            >
-              {checkingPayment ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-5 h-5" />
-              )}
-              Cek Status Pembayaran
-            </button>
-
-            {/* Cancel Button */}
-            <button
-              onClick={handleCancelQris}
-              className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 bg-muted text-muted-foreground hover:bg-muted/80 transition-all active:scale-95"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Kembali
-            </button>
-          </div>
-        </div>
-      </div>
+      <QrisPaymentDialog
+        open={showQrisPayment}
+        onClose={() => setShowQrisPayment(false)}
+        onPaymentSuccess={handleQrisPaymentSuccess}
+        orderId={tempOrderId}
+        total={total}
+        customerName={fullName || undefined}
+        cart={items}
+      />
     );
   }
 
@@ -395,10 +256,10 @@ export function CheckoutDialog({
           <div className="p-6 space-y-6">
             {/* Success Icon */}
             <div className="flex flex-col items-center gap-3">
-              <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center">
-                <CheckCircle className="w-12 h-12 text-success" />
+              <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center">
+                <CheckCircle className="w-12 h-12 text-green-500" />
               </div>
-              <h3 className="text-xl font-bold text-success">Pembayaran Berhasil!</h3>
+              <h3 className="text-xl font-bold text-green-500">Pembayaran Berhasil!</h3>
               <p className="text-sm text-muted-foreground text-center">
                 Struk telah dicetak ke printer
               </p>
@@ -450,7 +311,7 @@ export function CheckoutDialog({
                     {receiptData.change > 0 && (
                       <div className="flex justify-between text-sm mt-2">
                         <span className="text-muted-foreground">Kembalian</span>
-                        <span className="font-bold text-success">{formatPrice(receiptData.change)}</span>
+                        <span className="font-bold text-green-500">{formatPrice(receiptData.change)}</span>
                       </div>
                     )}
                   </>
@@ -493,204 +354,172 @@ export function CheckoutDialog({
               <MapPin className="w-4 h-4" />
               Pilih Meja (Opsional)
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => onSelectTable(null)}
                 className={cn(
-                  "py-3 rounded-lg text-sm font-medium transition-all active:scale-95",
+                  "px-4 py-2 rounded-lg font-medium text-sm transition-all",
                   selectedTable === null
                     ? "bg-primary text-primary-foreground"
-                    : "bg-muted hover:bg-muted/80"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
               >
-                Bawa
+                Bawa Pulang
               </button>
-              {tables
-                .filter(t => t.status === 'available' || t.id === selectedTable)
-                .slice(0, 7)
-                .map((table) => (
-                  <button
-                    key={table.id}
-                    onClick={() => onSelectTable(table.id)}
-                    className={cn(
-                      "py-3 rounded-lg text-sm font-medium transition-all active:scale-95",
-                      selectedTable === table.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted hover:bg-muted/80"
-                    )}
-                  >
-                    #{table.table_number}
-                  </button>
-                ))}
+              {tables.filter(t => t.status === 'available').map((table) => (
+                <button
+                  key={table.id}
+                  onClick={() => onSelectTable(table.id)}
+                  className={cn(
+                    "px-4 py-2 rounded-lg font-medium text-sm transition-all",
+                    selectedTable === table.id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  )}
+                >
+                  Meja {table.table_number}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Order Summary */}
-          <div className="bg-secondary/50 rounded-xl p-4 space-y-2 max-h-40 overflow-y-auto no-scrollbar">
-            {items.map((item) => (
+          <div className="bg-secondary/50 rounded-xl p-4 space-y-2">
+            <h4 className="font-medium text-sm text-muted-foreground">Ringkasan Pesanan</h4>
+            {items.map(item => (
               <div key={item.id} className="flex justify-between text-sm">
                 <span>
-                  {item.quantity}x {item.name}
+                  {item.name} x{item.quantity}
                 </span>
-                <span className="font-medium">{formatPrice(item.price * item.quantity)}</span>
+                <span>{formatPrice(item.price * item.quantity)}</span>
               </div>
             ))}
-          </div>
-
-          {/* Total */}
-          <div className="flex items-center justify-between py-3 border-y border-border">
-            <span className="text-lg font-semibold">Total</span>
-            <span className="text-2xl font-bold text-primary">{formatPrice(total)}</span>
+            <div className="border-t border-border pt-2 mt-2">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span className="text-primary">{formatPrice(total)}</span>
+              </div>
+            </div>
           </div>
 
           {/* Payment Method */}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => {
-                setPaymentMethod('cash');
-                setAmountPaid(total);
-              }}
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
-                paymentMethod === 'cash'
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              )}
-            >
-              <Banknote className="w-5 h-5" />
-              <span className="text-sm">Tunai</span>
-            </button>
-            <button
-              onClick={() => {
-                setPaymentMethod('transfer');
-                setAmountPaid(total);
-              }}
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
-                paymentMethod === 'transfer'
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              )}
-            >
-              <CreditCard className="w-5 h-5" />
-              <span className="text-sm">Transfer</span>
-            </button>
-            <button
-              onClick={() => {
-                setPaymentMethod('qris');
-                setAmountPaid(total);
-              }}
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 py-4 rounded-xl font-semibold transition-all active:scale-95",
-                paymentMethod === 'qris'
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground"
-              )}
-            >
-              <QrCode className="w-5 h-5" />
-              <span className="text-sm">QRIS</span>
-            </button>
-          </div>
-
-          {/* Cash Options */}
-          {paymentMethod === 'cash' && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-4 gap-2">
-                {quickCashOptions.map((amount) => (
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-muted-foreground">Metode Pembayaran</label>
+            <div className="grid grid-cols-3 gap-2">
+              {paymentMethods.map(method => {
+                const Icon = method.icon;
+                return (
                   <button
-                    key={amount}
-                    onClick={() => handleQuickCash(amount)}
+                    key={method.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(method.id)}
                     className={cn(
-                      "py-3 rounded-lg text-sm font-medium transition-all active:scale-95",
-                      amountPaid === amount
-                        ? "bg-accent text-accent-foreground"
-                        : "bg-muted hover:bg-muted/80"
+                      "flex flex-col items-center gap-2 p-4 rounded-xl transition-all",
+                      paymentMethod === method.id
+                        ? "bg-primary text-primary-foreground shadow-lg"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
                     )}
                   >
-                    {formatPrice(amount).replace('Rp', '')}
+                    <Icon className="h-6 w-6" />
+                    <span className="text-sm font-medium">{method.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* QRIS Info */}
+          {isQrisPayment && (
+            <div className="p-4 bg-primary/10 rounded-xl border border-primary/20">
+              <div className="flex items-center gap-3">
+                <QrCode className="h-8 w-8 text-primary" />
+                <div>
+                  <p className="font-medium text-sm">Pembayaran QRIS</p>
+                  <p className="text-xs text-muted-foreground">
+                    QR code akan ditampilkan setelah konfirmasi
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cash Payment - Received Amount */}
+          {isCashPayment && (
+            <div className="space-y-3 p-4 bg-secondary/50 rounded-xl">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Uang Diterima *</label>
+                <input
+                  type="number"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
+                  placeholder="Masukkan jumlah uang..."
+                  className="w-full px-4 py-3 rounded-lg bg-background border border-border text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
+                  min={0}
+                />
+              </div>
+
+              {/* Quick Amount Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExactAmount}
+                  className="px-3 py-2 text-xs font-medium bg-muted rounded-lg hover:bg-muted/80 transition-colors"
+                >
+                  Uang Pas
+                </button>
+                {quickCashOptions.map(amount => (
+                  <button
+                    key={amount}
+                    type="button"
+                    onClick={() => handleQuickCash(amount)}
+                    className="px-3 py-2 text-xs font-medium bg-muted rounded-lg hover:bg-muted/80 transition-colors"
+                  >
+                    {formatPrice(amount)}
                   </button>
                 ))}
               </div>
-              <button
-                onClick={handleExactAmount}
-                className={cn(
-                  "w-full py-3 rounded-lg font-medium transition-all active:scale-95",
-                  amountPaid === total
-                    ? "bg-accent text-accent-foreground"
-                    : "bg-muted hover:bg-muted/80"
-                )}
-              >
-                Uang Pas
-              </button>
 
-              {/* Custom Amount Input */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Jumlah Uang Custom</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">Rp</span>
-                  <input
-                    type="number"
-                    value={amountPaid || ''}
-                    onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
-                    placeholder="Masukkan jumlah..."
-                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all text-right font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Change */}
-              {change > 0 && (
-                <div className="flex items-center justify-between p-4 bg-success/10 rounded-xl border border-success/20">
-                  <span className="text-success font-medium">Kembalian</span>
-                  <span className="text-success font-bold text-xl">{formatPrice(change)}</span>
+              {/* Change Amount Display */}
+              {amountPaid > 0 && (
+                <div className={cn(
+                  "p-4 rounded-xl text-center",
+                  change >= 0 ? "bg-green-500/10" : "bg-destructive/10"
+                )}>
+                  <p className="text-sm text-muted-foreground">Kembalian</p>
+                  <p className={cn(
+                    "text-2xl font-bold",
+                    change >= 0 ? "text-green-500" : "text-destructive"
+                  )}>
+                    {change >= 0 ? formatPrice(change) : `Kurang ${formatPrice(Math.abs(change))}`}
+                  </p>
                 </div>
               )}
             </div>
           )}
+        </div>
 
-          {/* QRIS Info */}
-          {paymentMethod === 'qris' && (
-            <div className="p-4 bg-secondary/50 rounded-xl space-y-2">
-              <div className="flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-primary" />
-                <span className="font-medium">Pembayaran QRIS</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                QR code akan dibuat otomatis setelah Anda menekan tombol di bawah. Customer dapat scan menggunakan GoPay, OVO, DANA, ShopeePay, dan aplikasi e-wallet lainnya.
-              </p>
-            </div>
-          )}
-
-          {/* Complete Button */}
+        {/* Footer */}
+        <div className="p-4 border-t border-border space-y-2">
           <button
             onClick={handleComplete}
-            disabled={
-              (paymentMethod === 'cash' && amountPaid < total) ||
-              isProcessing ||
-              qrisGenerating
-            }
+            disabled={isProcessing || !canConfirm}
             className={cn(
               "w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95",
-              isProcessing || qrisGenerating
-                ? "bg-primary/70 text-primary-foreground"
-                : (paymentMethod !== 'cash' || amountPaid >= total)
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              canConfirm
+                ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >
-            {isProcessing || qrisGenerating ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
-            ) : paymentMethod === 'qris' ? (
-              <>
-                <QrCode className="w-5 h-5" />
-                Buat QR Code
-              </>
-            ) : (
-              <>
-                <Printer className="w-5 h-5" />
-                Cetak Struk
-              </>
-            )}
+            {isProcessing ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : null}
+            {isProcessing ? 'Memproses...' : isQrisPayment ? 'Tampilkan QRIS' : 'Konfirmasi & Cetak Struk'}
+          </button>
+          <button
+            onClick={handleClose}
+            className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 bg-muted text-muted-foreground hover:bg-muted/80 transition-all active:scale-95"
+          >
+            Batal
           </button>
         </div>
       </div>
